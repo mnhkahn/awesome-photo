@@ -12,6 +12,7 @@ data class PhotoCandidate(
     val displayName: String,
     val width: Int,
     val height: Int,
+    val dateMs: Long,
     val target: WallpaperTarget,
     val kind: PhotoKind,
     val score: Int,

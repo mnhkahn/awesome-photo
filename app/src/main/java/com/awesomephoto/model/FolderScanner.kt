@@ -18,7 +18,7 @@ class FolderScanner(private val context: Context, private val analyzer: SegForme
         val files = collectImageFiles(DocumentFile.fromTreeUri(context, folderUri), settings.scanLimit)
         val prefiltered = files.mapNotNull { file ->
             bounds(file.uri)?.let { size ->
-                eligible(file.uri, file.name ?: "未命名图片", size.first, size.second, settings)?.let { candidate ->
+                eligible(file.uri, file.name ?: "未命名图片", size.first, size.second, file.lastModified(), settings)?.let { candidate ->
                     PendingPhoto(candidate, file.length(), file.lastModified())
                 }
             }
@@ -68,9 +68,9 @@ class FolderScanner(private val context: Context, private val analyzer: SegForme
         if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
     }
 
-    private fun eligible(uri: Uri, name: String, width: Int, height: Int, s: ScanSettings): PhotoCandidate? = when {
-        width >= height && width >= s.desktopMinWidth && height >= s.desktopMinHeight -> PhotoCandidate(uri, name, width, height, WallpaperTarget.DESKTOP, PhotoKind.OTHER, 0, emptyList())
-        height > width && width >= s.appMinWidth && height >= s.appMinHeight -> PhotoCandidate(uri, name, width, height, WallpaperTarget.APP, PhotoKind.OTHER, 0, emptyList())
+    private fun eligible(uri: Uri, name: String, width: Int, height: Int, dateMs: Long, s: ScanSettings): PhotoCandidate? = when {
+        width >= height && width >= s.desktopMinWidth && height >= s.desktopMinHeight -> PhotoCandidate(uri, name, width, height, dateMs, WallpaperTarget.DESKTOP, PhotoKind.OTHER, 0, emptyList())
+        height > width && width >= s.appMinWidth && height >= s.appMinHeight -> PhotoCandidate(uri, name, width, height, dateMs, WallpaperTarget.APP, PhotoKind.OTHER, 0, emptyList())
         else -> null
     }
 

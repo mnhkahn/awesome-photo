@@ -21,6 +21,7 @@ from pathlib import Path
 import cv2
 import gradio as gr
 import numpy as np
+from fastapi import FastAPI
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pillow_heif import register_heif_opener
 
@@ -678,6 +679,12 @@ with gr.Blocks(title="壁纸照片分析器") as demo:
             outputs=[export_summary],
         )
 
+# ASGI entry point required by Vercel's Python runtime.  This only makes the
+# Gradio UI mountable; the local-folder workflow still needs a local runtime.
+app = gr.mount_gradio_app(
+    FastAPI(), demo, path="/",
+    allowed_paths=[str(CACHE_DB_PATH.parent / "previews")],
+)
 
 if __name__ == "__main__":
     demo.queue().launch(
