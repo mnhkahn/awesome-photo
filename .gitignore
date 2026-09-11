@@ -2,3 +2,10 @@
 .venv312/
 __pycache__/
 *.pyc
+output/
+app/src/main/assets/*.onnx
+local.properties
+.gradle/
+build/
+app/build/
+.cache/
