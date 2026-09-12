@@ -2,6 +2,8 @@ package com.awesomephoto
 
 import android.os.Bundle
 import android.Manifest
+import android.location.Geocoder
+import android.media.ExifInterface
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -62,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.awesomephoto.model.PhotoCandidate
 import com.awesomephoto.model.PhotoKind
 import com.awesomephoto.model.Orientation
@@ -358,20 +362,44 @@ private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
 
 @Composable
 private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit) {
+    var details by remember(candidate.uri) { mutableStateOf<PhotoDetails?>(null) }
+    val context = LocalContext.current
+    LaunchedEffect(candidate.uri) { details = loadPhotoDetails(context, candidate.uri) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text("×", modifier = Modifier.size(32.dp).clickable(onClick = onDismiss), style = MaterialTheme.typography.headlineSmall)
+                }
                 AsyncImage(
                     model = candidate.uri,
                     contentDescription = candidate.displayName,
                     modifier = Modifier.fillMaxWidth().height(560.dp).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Fit,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("${candidate.score} 分 · ${candidate.displayName}", modifier = Modifier.width(250.dp), maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onDismiss) { Text("关闭") }
-                }
+                Text("${candidate.score} 分 · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                details?.takenAt?.let { Text("拍摄于 $it", style = MaterialTheme.typography.bodySmall) }
+                details?.let { Text("地点：${it.placeName ?: "未能识别"}", style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
+}
+
+private data class PhotoDetails(val takenAt: String?, val placeName: String?)
+
+private suspend fun loadPhotoDetails(context: android.content.Context, uri: android.net.Uri): PhotoDetails = withContext(Dispatchers.IO) {
+    val exif = runCatching {
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor -> ExifInterface(descriptor.fileDescriptor) }
+    }.getOrNull() ?: return@withContext PhotoDetails(null, null)
+    val takenAt = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+        ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+    val coordinates = FloatArray(2)
+    val placeName = if (exif.getLatLong(coordinates) && Geocoder.isPresent()) runCatching {
+        val address = Geocoder(context, Locale.getDefault())
+            .getFromLocation(coordinates[0].toDouble(), coordinates[1].toDouble(), 1)
+            ?.firstOrNull()
+        listOfNotNull(address?.countryName, address?.adminArea, address?.locality, address?.subLocality, address?.featureName)
+            .distinct().joinToString("·").ifBlank { null }
+    }.getOrNull() else null
+    PhotoDetails(takenAt, placeName)
 }
