@@ -1,8 +1,7 @@
 package com.awesomephoto
 
-import android.app.DatePickerDialog
-import android.content.Intent
 import android.os.Bundle
+import android.Manifest
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -17,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -42,7 +43,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +59,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.awesomephoto.model.PhotoCandidate
@@ -63,6 +67,7 @@ import com.awesomephoto.model.PhotoKind
 import com.awesomephoto.model.Orientation
 import com.awesomephoto.model.ScanSettings
 import com.awesomephoto.model.ScoreBand
+import com.awesomephoto.model.ScanStage
 
 class MainActivity : ComponentActivity() {
     private val viewModel: ScanViewModel by viewModels()
@@ -80,12 +85,10 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     val calendar = remember { Calendar.getInstance() }
     var startDateMs by remember { mutableStateOf(startOfDay(calendar.timeInMillis - 6 * 24 * 60 * 60 * 1000L)) }
     var endDateMs by remember { mutableStateOf(endOfDay(calendar.timeInMillis)) }
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        viewModel.setFolder(uri)
-    }
+    val photoPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> viewModel.setPhotoAccess(granted) }
     var scoreBand by remember { mutableStateOf(ScoreBand.ABOVE_95) }
     var orientation by remember { mutableStateOf(Orientation.ALL) }
+    var previewCandidate by remember { mutableStateOf<PhotoCandidate?>(null) }
     val visible = state.candidates.filter {
             (activeKind == PhotoKind.ALL || it.kind == activeKind) &&
             (scoreBand == ScoreBand.ALL || it.scoreBand == scoreBand) &&
@@ -115,22 +118,32 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         Text("照片仅在本机按类型、尺寸、语义和构图处理，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { folderPicker.launch(null) }, enabled = !state.isScanning) { Text("选择目录") }
-            Text(state.folder?.lastPathSegment ?: "尚未选择", maxLines = 1, modifier = Modifier.padding(end = 8.dp))
-        }
+            Button(onClick = { photoPermission.launch(Manifest.permission.READ_MEDIA_IMAGES) }, enabled = !state.isScanning && !state.hasPhotoAccess) { Text("允许访问系统相册") }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SettingFields(state.settings, enabled = !state.isScanning, onChange = viewModel::updateSettings)
-            DateRangeFilter(startDateMs, endDateMs, !state.isScanning, { startDateMs = it }, { endDateMs = it })
+            DateRangeFilter(
+                startDateMs = startDateMs,
+                endDateMs = endDateMs,
+                hasFolder = state.hasPhotoAccess,
+                dailyCounts = state.dailyPhotoCounts,
+                isIndexing = state.isDateIndexing,
+                enabled = !state.isScanning,
+                onRangeConfirmed = { start, end ->
+                    startDateMs = start
+                    endDateMs = end
+                    viewModel.setDateRange(start, end)
+                },
+                onMonthVisible = viewModel::loadCalendarMonth,
+            )
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Button(onClick = viewModel::scan, enabled = !state.isScanning && state.folder != null) { Text("开始分析") }
+            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && state.hasPhotoAccess) { Text("开始分析") }
         }
         state.error?.let { message -> item(span = { GridItemSpan(maxLineSpan) }) { Text(message, color = MaterialTheme.colorScheme.error) } }
-        if (state.isScanning) item(span = { GridItemSpan(maxLineSpan) }) { Progress(state.progress.done, state.progress.total, state.progress.currentName) }
+        if (state.isScanning) item(span = { GridItemSpan(maxLineSpan) }) { Progress(state.progress) }
         if (!state.isScanning && state.candidates.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text("已完成 ${state.candidates.size} 张评分；当前显示 ${visible.size} 张", fontWeight = FontWeight.SemiBold)
@@ -147,11 +160,20 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text("导出当前筛选结果 (${visible.size})") }
             }
-            items(visible, key = { it.uri.toString() }) { candidate -> CandidateCard(candidate) }
-        } else if (!state.isScanning && state.folder != null && state.error == null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("选择目录后开始分析；结果会直接在这里显示。", style = MaterialTheme.typography.bodyMedium) }
+            items(visible, key = { it.uri.toString() }) { candidate -> CandidateCard(candidate) { previewCandidate = candidate } }
+        } else if (!state.isScanning && state.lastScan != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                val summary = requireNotNull(state.lastScan)
+                Text(
+                    "本次已完成：日期范围内 ${summary.dateMatchedCount} 张，尺寸合格 ${summary.sizeEligibleCount} 张，成功评分 ${summary.scoredCount} 张。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else if (!state.isScanning && state.hasPhotoAccess && state.error == null) {
+            item(span = { GridItemSpan(maxLineSpan) }) { Text("选择日期范围后开始分析；结果会直接在这里显示。", style = MaterialTheme.typography.bodyMedium) }
         }
     }
+    previewCandidate?.let { candidate -> PhotoPreviewDialog(candidate) { previewCandidate = null } }
 }
 
 @Composable
@@ -165,32 +187,125 @@ private fun SettingFields(settings: ScanSettings, enabled: Boolean, onChange: (S
 private fun DateRangeFilter(
     startDateMs: Long,
     endDateMs: Long,
+    hasFolder: Boolean,
+    dailyCounts: List<com.awesomephoto.model.PhotoDateIndex.DayCount>,
+    isIndexing: Boolean,
     enabled: Boolean,
-    onStartChange: (Long) -> Unit,
-    onEndChange: (Long) -> Unit,
+    onRangeConfirmed: (Long, Long) -> Unit,
+    onMonthVisible: (Int, Int) -> Unit,
 ) {
     val context = LocalContext.current
     val formatter = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
-    FilterChip(
-        selected = true,
-        onClick = {
-            // One compact range control: pick start first, then the end date.
-            pickDate(context, startDateMs) { selectedStart ->
-                val start = minOf(selectedStart, endDateMs)
-                onStartChange(start)
-                pickDate(context, endDateMs) { selectedEnd -> onEndChange(maxOf(selectedEnd, start)) }
-            }
-        },
-        enabled = enabled,
-        label = { Text("日期 ${formatter.format(startDateMs)}–${formatter.format(endDateMs)}") },
+    var showCalendar by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        FilterChip(
+            selected = true,
+            onClick = { showCalendar = true },
+            enabled = enabled && hasFolder,
+            label = { Text("日期 ${formatter.format(startDateMs)}–${formatter.format(endDateMs)}") },
+        )
+    }
+    if (showCalendar) CalendarRangeDialog(
+        startDateMs = startDateMs,
+        endDateMs = endDateMs,
+        dailyCounts = dailyCounts,
+        isIndexing = isIndexing,
+        onDismiss = { showCalendar = false },
+        onConfirm = { start, end -> onRangeConfirmed(start, end); showCalendar = false },
+        onMonthVisible = onMonthVisible,
     )
 }
 
-private fun pickDate(context: android.content.Context, initialDateMs: Long, onPicked: (Long) -> Unit) {
-    val date = Calendar.getInstance().apply { timeInMillis = initialDateMs }
-    DatePickerDialog(context, { _, year, month, day ->
-        onPicked(Calendar.getInstance().apply { set(year, month, day, 0, 0, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis)
-    }, date.get(Calendar.YEAR), date.get(Calendar.MONTH), date.get(Calendar.DAY_OF_MONTH)).show()
+private data class CalendarMonth(val year: Int, val month: Int)
+
+@Composable
+private fun CalendarRangeDialog(
+    startDateMs: Long,
+    endDateMs: Long,
+    dailyCounts: List<com.awesomephoto.model.PhotoDateIndex.DayCount>,
+    isIndexing: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Long, Long) -> Unit,
+    onMonthVisible: (Int, Int) -> Unit,
+) {
+    val context = LocalContext.current
+    val formatter = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
+    val initialCalendar = remember(startDateMs) { Calendar.getInstance().apply { timeInMillis = startDateMs } }
+    var shownMonth by remember { mutableStateOf(CalendarMonth(initialCalendar.get(Calendar.YEAR), initialCalendar.get(Calendar.MONTH))) }
+    var selectedStart by remember { mutableStateOf(startDateMs) }
+    var selectedEnd by remember { mutableStateOf(endDateMs) }
+    var awaitingEnd by remember { mutableStateOf(false) }
+    val countByDay = remember(dailyCounts) { dailyCounts.associate { it.dayStartMs to it.count } }
+    LaunchedEffect(shownMonth) { onMonthVisible(shownMonth.year, shownMonth.month) }
+    val monthCalendar = remember(shownMonth) {
+        Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month, 1, 0, 0, 0) }
+    }
+    val offset = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val days = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = {
+                        val previous = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month - 1, 1) }
+                        shownMonth = CalendarMonth(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH))
+                    }) { Text("‹") }
+                    Text("${shownMonth.year}年${shownMonth.month + 1}月", fontWeight = FontWeight.Bold, modifier = Modifier.width(176.dp))
+                    if (isIndexing) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    TextButton(onClick = {
+                        val next = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month + 1, 1) }
+                        shownMonth = CalendarMonth(next.get(Calendar.YEAR), next.get(Calendar.MONTH))
+                    }) { Text("›") }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { weekday ->
+                        Text(weekday, modifier = Modifier.width(42.dp), style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                (0 until 6).forEach { week ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        (0 until 7).forEach { dayOfWeek ->
+                            val index = week * 7 + dayOfWeek
+                            val day = index - offset + 1
+                            if (day !in 1..days) {
+                                Box(Modifier.width(42.dp).height(50.dp))
+                            } else {
+                                val dayMs = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month, day, 0, 0, 0) }.timeInMillis
+                                val inRange = dayMs in selectedStart..selectedEnd
+                                Surface(
+                                    color = if (inRange) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.width(42.dp).height(50.dp).clickable {
+                                        if (!awaitingEnd) {
+                                            selectedStart = dayMs
+                                            selectedEnd = dayMs
+                                            awaitingEnd = true
+                                        } else {
+                                            val firstSelectedDay = selectedStart
+                                            selectedStart = minOf(firstSelectedDay, dayMs)
+                                            selectedEnd = maxOf(firstSelectedDay, dayMs)
+                                            awaitingEnd = false
+                                        }
+                                    },
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                        Text(day.toString(), style = MaterialTheme.typography.labelMedium)
+                                        Text(if (isIndexing) "·" else (countByDay[dayMs] ?: 0).toString(), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text("${formatter.format(selectedStart)} — ${formatter.format(selectedEnd)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = { onConfirm(selectedStart, selectedEnd) }) { Text("确定") }
+                }
+            }
+        }
+    }
 }
 
 private fun startOfDay(timeMs: Long): Long = Calendar.getInstance().apply {
@@ -215,21 +330,48 @@ private fun NumberField(label: String, value: Int, enabled: Boolean, onValue: (I
 }
 
 @Composable
-private fun Progress(done: Int, total: Int, name: String) {
+private fun Progress(progress: com.awesomephoto.model.ScanProgress) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (total == 0) "正在准备图片…" else "正在分析 $done / $total")
-        LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
-        if (name.isNotBlank()) Text(name, style = MaterialTheme.typography.bodySmall)
+        Text(
+            when (progress.stage) {
+                ScanStage.DISCOVERING -> "正在发现图片 ${progress.done} 张"
+                ScanStage.CHECKING_SIZE -> "正在检查尺寸 ${progress.done} / ${progress.total}"
+                ScanStage.ANALYSING -> "正在分析 ${progress.done} / ${progress.total}"
+                ScanStage.PREPARING -> "正在准备图片…"
+            }
+        )
+        LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
+        if (progress.currentName.isNotBlank()) Text(progress.currentName, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
-private fun CandidateCard(candidate: PhotoCandidate) {
-    Card {
+private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
+    Card(modifier = Modifier.clickable(onClick = onPreview)) {
         Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             AsyncImage(model = candidate.uri, contentDescription = candidate.displayName, modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
             Text("${candidate.score} 分 · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(candidate.semanticLabels.joinToString(" · ").ifBlank { candidate.kind.label }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AsyncImage(
+                    model = candidate.uri,
+                    contentDescription = candidate.displayName,
+                    modifier = Modifier.fillMaxWidth().height(560.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Fit,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("${candidate.score} 分 · ${candidate.displayName}", modifier = Modifier.width(250.dp), maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onDismiss) { Text("关闭") }
+                }
+            }
         }
     }
 }

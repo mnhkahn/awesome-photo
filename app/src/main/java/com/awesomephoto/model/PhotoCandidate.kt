@@ -27,9 +27,18 @@ data class ScanSettings(
     val desktopMinWidth: Int = 1920,
     val desktopMinHeight: Int = 1080,
     val appMinWidth: Int = 1080,
-    val appMinHeight: Int = 1920
+    val appMinHeight: Int = 1920,
+    val dateStartMs: Long? = null,
+    val dateEndMs: Long? = null,
 )
 
-data class ScanProgress(val done: Int = 0, val total: Int = 0, val currentName: String = "") {
+enum class ScanStage { PREPARING, DISCOVERING, CHECKING_SIZE, ANALYSING }
+
+data class ScanProgress(
+    val done: Int = 0,
+    val total: Int = 0,
+    val currentName: String = "",
+    val stage: ScanStage = ScanStage.PREPARING,
+) {
     val fraction: Float get() = if (total == 0) 0f else done.toFloat() / total
 }
