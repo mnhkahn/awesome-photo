@@ -6,6 +6,7 @@ output/
 app/src/main/assets/*.onnx
 local.properties
 .gradle/
+.kotlin/
 build/
 app/build/
 .cache/
