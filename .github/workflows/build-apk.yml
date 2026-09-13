@@ -2,6 +2,8 @@ name: Build Android APK
 
 on:
   push:
+    tags:
+      - '*'
   workflow_dispatch:
 
 permissions:
