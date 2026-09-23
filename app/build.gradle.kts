@@ -5,6 +5,9 @@ plugins {
 }
 
 val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("1.0")
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1")
+val pgyerDownloadPage = providers.gradleProperty("pgyerDownloadPage").orElse("")
 
 android {
     namespace = "com.awesomephoto"
@@ -14,8 +17,11 @@ android {
         applicationId = "com.awesomephoto"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersionCode.get().toInt()
+        versionName = releaseVersionName.get()
+
+        // This is a public page, never an API key. Empty for local/debug builds.
+        buildConfigField("String", "PGYER_DOWNLOAD_PAGE", "\"${pgyerDownloadPage.get()}\"")
     }
 
     buildFeatures { compose = true; buildConfig = true }

@@ -1,6 +1,8 @@
 package com.awesomephoto
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import android.Manifest
 import android.location.Geocoder
 import android.media.ExifInterface
@@ -36,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,6 +96,13 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     var scoreBand by remember { mutableStateOf(ScoreBand.ABOVE_95) }
     var orientation by remember { mutableStateOf(Orientation.ALL) }
     var previewCandidate by remember { mutableStateOf<PhotoCandidate?>(null) }
+    var availableUpdate by remember { mutableStateOf<PgyerUpdate?>(null) }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        PgyerUpdateChecker.fetch(BuildConfig.PGYER_DOWNLOAD_PAGE)?.let { update ->
+            if (PgyerUpdateChecker.isNewer(update.version, BuildConfig.VERSION_NAME)) availableUpdate = update
+        }
+    }
     val visible = state.candidates.filter {
             (activeKind == PhotoKind.ALL || it.kind == activeKind) &&
             (scoreBand == ScoreBand.ALL || it.scoreBand == scoreBand) &&
@@ -176,6 +186,20 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         } else if (!state.isScanning && state.hasPhotoAccess && state.error == null) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("选择日期范围后开始分析；结果会直接在这里显示。", style = MaterialTheme.typography.bodyMedium) }
         }
+    }
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("发现新版本 ${update.version}") },
+            text = { Text(update.notes.ifBlank { "已发布新版本，前往蒲公英下载安装。" }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PGYER_DOWNLOAD_PAGE)))
+                    availableUpdate = null
+                }) { Text("前往蒲公英更新") }
+            },
+            dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("稍后") } },
+        )
     }
     previewCandidate?.let { candidate -> PhotoPreviewDialog(candidate) { previewCandidate = null } }
 }

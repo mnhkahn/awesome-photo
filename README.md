@@ -38,3 +38,20 @@ python app.py
 ```
 
 然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
+
+## 发布到蒲公英
+
+推送版本 tag（例如 `git tag 0.1.7 && git push origin 0.1.7`）或手动运行 GitHub Actions 的 **Android Release Build** 并填写版本号。工作流会构建签名 APK、用 `git-chglog` 生成更新说明、上传到蒲公英并轮询到发布完成，最后用同一份说明创建 GitHub Release。
+
+在仓库 **Secrets** 配置：
+
+- `RELEASE_KEYSTORE_BASE64`：release keystore 的 Base64 内容
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+- `PGYER_API_KEY`
+- `LARK_RELEASE_WEBHOOK`：飞书群机器人 webhook；仅在蒲公英和 GitHub Release 均成功后发送通知
+
+在仓库 **Variables** 配置 `PGYER_SHORTCUT`（例如 `awesomephoto`，对应 `https://www.pgyer.com/awesomephoto`）。它必须是已存在的蒲公英公开下载短链；流水线用它保持每次发布在同一个下载页，App 也只把这个公开页面编译进安装包。
+
+App 启动时会访问该公开页面，读取最新版本与更新说明。发现更新会显示提示，点击“前往蒲公英更新”后由蒲公英生成短时安装链接并引导安装；App 不从 GitHub 下载，也不包含蒲公英 API Key。
