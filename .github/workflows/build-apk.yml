@@ -89,11 +89,22 @@ jobs:
           build_key=$(echo "$token" | jq -r '.data.key')
           signature=$(echo "$token" | jq -r '.data.params.signature')
           security_token=$(echo "$token" | jq -r '.data.params["x-cos-security-token"]')
-          curl --fail-with-body --silent --show-error --request POST "$endpoint" \
+          if curl --fail-with-body --silent --show-error --request POST "$endpoint" \
             --form "key=$build_key" --form "signature=$signature" \
             --form "x-cos-security-token=$security_token" --form 'x-cos-meta-file-name=app-release.apk' \
-            --form "file=@app/build/outputs/apk/release/app-release.apk"
-          for attempt in {1..30}; do
+            --form "file=@app/build/outputs/apk/release/app-release.apk"; then
+            : # Fast upload started Pgyer's publication queue.
+          else
+            # Pgyer's legacy endpoint is slower but avoids a transient COS
+            # signed-URL expiry, so retain it as a reliable CI fallback.
+            legacy=$(curl --fail-with-body --silent --show-error --request POST https://upload.pgyer.com/apiv2/app/upload \
+              --form "_api_key=$PGYER_API_KEY" --form 'buildInstallType=1' \
+              --form "buildUpdateDescription=<RELEASE_NOTES.md" \
+              --form "file=@app/build/outputs/apk/release/app-release.apk")
+            echo "$legacy" | jq -e '.code == 0' >/dev/null
+            build_key=$(echo "$legacy" | jq -r '.data.buildKey')
+          fi
+          for attempt in {1..60}; do
             status=$(curl --fail-with-body --silent --show-error "https://www.pgyer.com/apiv2/app/buildInfo?_api_key=$PGYER_API_KEY&buildKey=$build_key")
             code=$(echo "$status" | jq -r '.code')
             if [ "$code" = 0 ]; then
@@ -103,8 +114,8 @@ jobs:
               fi
               exit 0
             fi
-            [ "$code" = 1247 ] || { echo "$status"; exit 1; }
-            sleep 4
+            [ "$code" = 1246 ] || [ "$code" = 1247 ] || { echo "$status"; exit 1; }
+            sleep 3
           done
           echo 'Timed out waiting for Pgyer publication.' >&2
           exit 1
@@ -126,6 +137,15 @@ jobs:
           [ -z "$PGYER_DOWNLOAD_PAGE" ] || release_links="蒲公英：$PGYER_DOWNLOAD_PAGE\\n$release_links"
           payload=$(jq -n \
             --arg text "壁纸照片分析器 $VERSION 已发布\\n$release_links" \
+            '{msg_type: "text", content: {text: $text}}')
+          curl --fail-with-body --silent --show-error --request POST "$LARK_RELEASE_WEBHOOK" \
+            --header 'Content-Type: application/json' --data "$payload"
+      - name: Notify Lark about a failed release
+        if: ${{ failure() && env.LARK_RELEASE_WEBHOOK != '' }}
+        continue-on-error: true
+        run: |
+          payload=$(jq -n \
+            --arg text "壁纸照片分析器 $VERSION 发布失败\\n请查看：https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             '{msg_type: "text", content: {text: $text}}')
           curl --fail-with-body --silent --show-error --request POST "$LARK_RELEASE_WEBHOOK" \
             --header 'Content-Type: application/json' --data "$payload"
