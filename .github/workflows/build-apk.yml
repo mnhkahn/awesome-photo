@@ -87,11 +87,12 @@ jobs:
           echo "$token" | jq -e '.code == 0' >/dev/null
           endpoint=$(echo "$token" | jq -r '.data.endpoint')
           build_key=$(echo "$token" | jq -r '.data.key')
+          upload_key=$(echo "$token" | jq -r '.data.params.key')
           signature=$(echo "$token" | jq -r '.data.params.signature')
           security_token=$(echo "$token" | jq -r '.data.params["x-cos-security-token"]')
-          if curl --fail-with-body --silent --show-error --connect-timeout 20 --max-time 90 --request POST "$endpoint" \
-            --form "key=$build_key" --form "signature=$signature" \
-            --form "x-cos-security-token=$security_token" --form 'x-cos-meta-file-name=app-release.apk' \
+          if curl --fail-with-body --silent --show-error --connect-timeout 30 --max-time 1800 --request POST "$endpoint" \
+            --form-string "key=$upload_key" --form-string "signature=$signature" \
+            --form-string "x-cos-security-token=$security_token" --form-string 'x-cos-meta-file-name=app-release.apk' \
             --form "file=@app/build/outputs/apk/release/app-release.apk"; then
             : # Fast upload started Pgyer's publication queue.
           else
