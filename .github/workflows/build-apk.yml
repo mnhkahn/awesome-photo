@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ inputs.version || github.ref_name }}
-      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 || secrets.ANDROID_KEYSTORE_BASE64 }}
       # Accept the copied Homework secret during migration; prefer the app-neutral name.
-      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || secrets.HOMEWORK_RELEASE_STORE_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || secrets.HOMEWORK_RELEASE_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || secrets.ANDROID_KEY_PASSWORD }}
       PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}
       LARK_RELEASE_WEBHOOK: ${{ secrets.LARK_RELEASE_WEBHOOK }}
       PGYER_SHORTCUT: ${{ vars.PGYER_SHORTCUT }}
@@ -46,7 +46,6 @@ jobs:
           test -n "$RELEASE_KEY_ALIAS"
           test -n "$RELEASE_KEY_PASSWORD"
           test -n "$PGYER_API_KEY"
-          test -n "$PGYER_SHORTCUT"
           [[ "$VERSION" =~ ^v?[0-9]+(\.[0-9]+){1,3}([-.][0-9A-Za-z.]+)?$ ]]
       - name: Configure signing key
         run: |
@@ -58,10 +57,15 @@ jobs:
       - name: Build signed APK
         run: |
           VERSION_NAME="${VERSION#v}"
-          ./gradlew --no-daemon :app:assembleRelease \
+          gradle_args=(--no-daemon :app:assembleRelease \
             -PreleaseVersionName="$VERSION_NAME" \
-            -PreleaseVersionCode="$GITHUB_RUN_NUMBER" \
-            -PpgyerDownloadPage="https://www.pgyer.com/$PGYER_SHORTCUT"
+            -PreleaseVersionCode="$GITHUB_RUN_NUMBER")
+          # A short link is optional. Without one, Pgyer still publishes the APK;
+          # the App simply does not enable public-page update checks.
+          if [ -n "$PGYER_SHORTCUT" ]; then
+            gradle_args+=("-PpgyerDownloadPage=https://www.pgyer.com/$PGYER_SHORTCUT")
+          fi
+          ./gradlew "${gradle_args[@]}"
       - name: Generate release notes with git-chglog
         run: |
           go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.0
@@ -74,9 +78,12 @@ jobs:
       - name: Upload to Pgyer and wait for publication
         id: pgyer
         run: |
-          token=$(curl --fail-with-body --silent --show-error --request POST https://www.pgyer.com/apiv2/app/getCOSToken \
-            --form "_api_key=$PGYER_API_KEY" --form 'buildType=apk' --form 'buildInstallType=1' \
-            --form "buildChannelShortcut=$PGYER_SHORTCUT" --form "buildUpdateDescription=<RELEASE_NOTES.md")
+          upload_args=(--form "_api_key=$PGYER_API_KEY" --form 'buildType=apk' --form 'buildInstallType=1' \
+            --form "buildUpdateDescription=<RELEASE_NOTES.md")
+          if [ -n "$PGYER_SHORTCUT" ]; then
+            upload_args+=(--form "buildChannelShortcut=$PGYER_SHORTCUT")
+          fi
+          token=$(curl --fail-with-body --silent --show-error --request POST https://www.pgyer.com/apiv2/app/getCOSToken "${upload_args[@]}")
           echo "$token" | jq -e '.code == 0' >/dev/null
           endpoint=$(echo "$token" | jq -r '.data.endpoint')
           build_key=$(echo "$token" | jq -r '.data.key')
@@ -90,7 +97,10 @@ jobs:
             status=$(curl --fail-with-body --silent --show-error "https://www.pgyer.com/apiv2/app/buildInfo?_api_key=$PGYER_API_KEY&buildKey=$build_key")
             code=$(echo "$status" | jq -r '.code')
             if [ "$code" = 0 ]; then
-              echo "download_page=https://www.pgyer.com/$PGYER_SHORTCUT" >> "$GITHUB_OUTPUT"
+              shortcut=$(echo "$status" | jq -r '.data.buildShortcutUrl // empty')
+              if [ -n "$shortcut" ]; then
+                echo "download_page=https://www.pgyer.com/$shortcut" >> "$GITHUB_OUTPUT"
+              fi
               exit 0
             fi
             [ "$code" = 1247 ] || { echo "$status"; exit 1; }
@@ -104,14 +114,18 @@ jobs:
         run: |
           gh release create "$VERSION" app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file RELEASE_NOTES.md
-          echo "Pgyer download page: ${{ steps.pgyer.outputs.download_page }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n '${{ steps.pgyer.outputs.download_page }}' ]; then
+            echo "Pgyer download page: ${{ steps.pgyer.outputs.download_page }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Notify Lark about the published release
         env:
           PGYER_DOWNLOAD_PAGE: ${{ steps.pgyer.outputs.download_page }}
         run: |
           test -n "$LARK_RELEASE_WEBHOOK"
+          release_links="GitHub Release：https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+          [ -z "$PGYER_DOWNLOAD_PAGE" ] || release_links="蒲公英：$PGYER_DOWNLOAD_PAGE\\n$release_links"
           payload=$(jq -n \
-            --arg text "壁纸照片分析器 $VERSION 已发布\\n蒲公英：$PGYER_DOWNLOAD_PAGE\\nGitHub Release：https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION" \
+            --arg text "壁纸照片分析器 $VERSION 已发布\\n$release_links" \
             '{msg_type: "text", content: {text: $text}}')
           curl --fail-with-body --silent --show-error --request POST "$LARK_RELEASE_WEBHOOK" \
             --header 'Content-Type: application/json' --data "$payload"
