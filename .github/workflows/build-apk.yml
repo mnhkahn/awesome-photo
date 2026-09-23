@@ -89,7 +89,7 @@ jobs:
           build_key=$(echo "$token" | jq -r '.data.key')
           signature=$(echo "$token" | jq -r '.data.params.signature')
           security_token=$(echo "$token" | jq -r '.data.params["x-cos-security-token"]')
-          if curl --fail-with-body --silent --show-error --request POST "$endpoint" \
+          if curl --fail-with-body --silent --show-error --connect-timeout 20 --max-time 90 --request POST "$endpoint" \
             --form "key=$build_key" --form "signature=$signature" \
             --form "x-cos-security-token=$security_token" --form 'x-cos-meta-file-name=app-release.apk' \
             --form "file=@app/build/outputs/apk/release/app-release.apk"; then
@@ -97,7 +97,7 @@ jobs:
           else
             # Pgyer's legacy endpoint is slower but avoids a transient COS
             # signed-URL expiry, so retain it as a reliable CI fallback.
-            legacy=$(curl --fail-with-body --silent --show-error --request POST https://upload.pgyer.com/apiv2/app/upload \
+            legacy=$(curl --fail-with-body --silent --show-error --connect-timeout 20 --max-time 600 --request POST https://upload.pgyer.com/apiv2/app/upload \
               --form "_api_key=$PGYER_API_KEY" --form 'buildInstallType=1' \
               --form "buildUpdateDescription=<RELEASE_NOTES.md" \
               --form "file=@app/build/outputs/apk/release/app-release.apk")
