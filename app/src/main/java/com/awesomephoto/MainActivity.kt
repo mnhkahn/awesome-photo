@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.Image
@@ -117,7 +118,9 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     // One vertical scroll surface: controls and result cards share the same grid.
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
-        modifier = Modifier.fillMaxSize(),
+        // enableEdgeToEdge draws behind system bars; consume their safe area here
+        // so a status-bar icon or display cutout cannot cover the first controls.
+        modifier = Modifier.fillMaxSize().safeDrawingPadding(),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
