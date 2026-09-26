@@ -33,11 +33,13 @@ python app.py
 构建前导出模型资产：
 
 ```bash
-.venv312/bin/pip install onnx onnxruntime
-.venv312/bin/python tools/export_android_model.py
+.venv312/bin/pip install -r tools/requirements-model.txt
+.venv312/bin/python tools/export_android_model.py --download
 ```
 
 然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
+
+已有本地权重缓存时可以省略 `--download`。发布流水线会自动导出并验证模型，打包后还会检查 APK 内的模型内容。所有构建都会检查模型文件是否存在且非空，避免发布缺少模型的安装包。
 
 ## 发布到蒲公英
 

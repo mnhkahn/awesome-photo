@@ -38,6 +38,11 @@ jobs:
         with:
           go-version: stable
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: tools/requirements-model.txt
       - name: Validate release configuration
         run: |
           test -n "$VERSION"
@@ -54,6 +59,10 @@ jobs:
           echo "ANDROID_KEYSTORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Export and validate Android model
+        run: |
+          python -m pip install -r tools/requirements-model.txt
+          python tools/export_android_model.py --download
       - name: Build signed APK
         run: |
           VERSION_NAME="${VERSION#v}"
@@ -66,6 +75,16 @@ jobs:
             gradle_args+=("-PpgyerDownloadPage=https://www.pgyer.com/$PGYER_SHORTCUT")
           fi
           ./gradlew "${gradle_args[@]}"
+      - name: Verify APK contains the model
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          name = 'segformer_b0_ade512_int8.onnx'
+          with ZipFile('app/build/outputs/apk/release/app-release.apk') as apk:
+              if apk.read(f'assets/{name}') != Path(f'app/src/main/assets/{name}').read_bytes():
+                  raise SystemExit('Packaged model does not match the validated export')
+          PY
       - name: Generate release notes with git-chglog
         run: |
           go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.0

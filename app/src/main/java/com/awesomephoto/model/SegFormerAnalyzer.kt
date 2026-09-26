@@ -6,8 +6,8 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.io.File
+import java.io.FileNotFoundException
 import java.nio.FloatBuffer
-import kotlin.math.max
 
 /** Runs the exact ADE20K semantic model locally. No URI or bitmap leaves the device. */
 class SegFormerAnalyzer(context: Context) : AutoCloseable {
@@ -16,8 +16,24 @@ class SegFormerAnalyzer(context: Context) : AutoCloseable {
 
     init {
         val modelFile = File(context.cacheDir, "segformer_b0_ade512_int8.onnx")
-        if (!modelFile.exists()) context.assets.open("segformer_b0_ade512_int8.onnx").use { input -> modelFile.outputStream().use(input::copyTo) }
-        session = environment.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
+        if (!modelFile.exists() || modelFile.length() == 0L) {
+            val input = try {
+                context.assets.open(modelFile.name)
+            } catch (error: FileNotFoundException) {
+                throw IllegalStateException("安装包缺少照片分析模型，请安装包含完整模型的新版本", error)
+            }
+            input.use { source ->
+                val temporary = File.createTempFile("segformer-", ".tmp", context.cacheDir)
+                try {
+                    temporary.outputStream().use { source.copyTo(it) }
+                    check(temporary.length() > 0L) { "安装包中的照片分析模型为空，请重新安装完整版本" }
+                    check(temporary.renameTo(modelFile)) { "无法保存照片分析模型，请检查设备存储空间" }
+                } finally {
+                    temporary.delete()
+                }
+            }
+        }
+        session = OrtSession.SessionOptions().use { environment.createSession(modelFile.absolutePath, it) }
     }
 
     fun analyzeBatch(bitmaps: List<Bitmap>): List<PhotoScorer.SemanticStats> {

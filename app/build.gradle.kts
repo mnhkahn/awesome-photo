@@ -9,6 +9,16 @@ val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1")
 val pgyerDownloadPage = providers.gradleProperty("pgyerDownloadPage").orElse("")
 
+val verifyModelAsset by tasks.registering {
+    val model = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
+    doLast {
+        check(model.asFile.isFile && model.asFile.length() > 0) {
+            "Missing or empty SegFormer model. Run: python tools/export_android_model.py --download"
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyModelAsset) }
+
 android {
     namespace = "com.awesomephoto"
     compileSdk = 35

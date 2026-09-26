@@ -7,6 +7,8 @@
 仓库提供 `tools/export_android_model.py` 来导出及量化该模型。模型二进制不纳入 Git；在打包前执行：
 
 ```bash
-.venv312/bin/pip install onnx onnxruntime
-.venv312/bin/python tools/export_android_model.py
+.venv312/bin/pip install -r tools/requirements-model.txt
+.venv312/bin/python tools/export_android_model.py --download
 ```
+
+已有本地模型缓存时可省略 `--download`。发布流水线会自动下载、导出并执行推理校验，然后确认 APK 内的模型与导出结果一致。缺失或空模型会使 Gradle 构建失败。
