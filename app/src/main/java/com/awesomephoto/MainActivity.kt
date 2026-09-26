@@ -1,7 +1,9 @@
 package com.awesomephoto
 
 import android.os.Bundle
+import android.os.Build
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.Manifest
 import android.location.Geocoder
@@ -79,10 +81,48 @@ import com.awesomephoto.model.ScanStage
 
 class MainActivity : ComponentActivity() {
     private val viewModel: ScanViewModel by viewModels()
+    private val photoPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refreshPhotoAccess()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        refreshPhotoAccess()
         setContent { MaterialTheme { Surface(Modifier.fillMaxSize()) { BatchScanScreen(viewModel) } } }
+        // Ask once when opening the app; rotation and permission callbacks must not ask again.
+        if (savedInstanceState == null && !hasPhotoAccess()) {
+            photoPermissions.launch(
+                when {
+                    Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                        Manifest.permission.READ_MEDIA_IMAGES,
+                        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                    )
+                    Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+                    else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+                }
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Permissions can change in system settings while the app is in the background.
+        refreshPhotoAccess()
+    }
+
+    private fun hasPhotoAccess(): Boolean = when {
+        Build.VERSION.SDK_INT >= 34 ->
+            checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT >= 33 ->
+            checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        else -> checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun refreshPhotoAccess() {
+        val granted = hasPhotoAccess()
+        if (viewModel.state.value.hasPhotoAccess != granted) viewModel.setPhotoAccess(granted)
     }
 }
 
@@ -93,7 +133,6 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     val calendar = remember { Calendar.getInstance() }
     var startDateMs by remember { mutableStateOf(startOfDay(calendar.timeInMillis - 6 * 24 * 60 * 60 * 1000L)) }
     var endDateMs by remember { mutableStateOf(endOfDay(calendar.timeInMillis)) }
-    val photoPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> viewModel.setPhotoAccess(granted) }
     var scoreBand by remember { mutableStateOf(ScoreBand.ABOVE_95) }
     var orientation by remember { mutableStateOf(Orientation.ALL) }
     var previewCandidate by remember { mutableStateOf<PhotoCandidate?>(null) }
@@ -134,8 +173,8 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         item(span = { GridItemSpan(maxLineSpan) }) {
         Text("照片仅在本机按类型、尺寸、语义和构图处理，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
         }
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Button(onClick = { photoPermission.launch(Manifest.permission.READ_MEDIA_IMAGES) }, enabled = !state.isScanning && !state.hasPhotoAccess) { Text("允许访问系统相册") }
+        if (!state.hasPhotoAccess) item(span = { GridItemSpan(maxLineSpan) }) {
+            Text("需要相册访问权限才能分析照片；若未授权，可在系统设置中开启本应用的照片访问权限。", style = MaterialTheme.typography.bodySmall)
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
