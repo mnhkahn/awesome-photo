@@ -7,7 +7,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.awesomephoto.model.FolderScanner
 import com.awesomephoto.model.PhotoCandidate
-import com.awesomephoto.model.PhotoKind
 import com.awesomephoto.model.PhotoDateIndex
 import com.awesomephoto.model.ScanProgress
 import com.awesomephoto.model.ScanSettings
@@ -103,7 +102,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun count(kind: PhotoKind) = if (kind == PhotoKind.ALL) _state.value.candidates.size else _state.value.candidates.count { it.kind == kind }
 
     fun export(destinationTree: Uri, candidates: List<PhotoCandidate>) {
         if (candidates.isEmpty()) { _state.value = _state.value.copy(error = "当前筛选条件下没有图片可导出"); return }

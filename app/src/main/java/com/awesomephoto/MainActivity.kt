@@ -3,11 +3,16 @@ package com.awesomephoto
 import android.os.Bundle
 import android.os.Build
 import android.content.Intent
+import android.content.ClipData
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.MediaStore
+import android.provider.Settings
 import android.Manifest
 import android.location.Geocoder
 import android.media.ExifInterface
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -20,6 +25,9 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
@@ -46,6 +54,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -143,12 +154,21 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
             if (PgyerUpdateChecker.isNewer(update.version, BuildConfig.VERSION_NAME)) availableUpdate = update
         }
     }
-    val visible = state.candidates.filter {
-            (activeKind == PhotoKind.ALL || it.kind == activeKind) &&
-            (scoreBand == ScoreBand.ALL || it.scoreBand == scoreBand) &&
-            (orientation == Orientation.ALL || it.orientation == orientation) &&
-            it.dateMs in startDateMs..endDateMs
-    }
+    fun matchesFilters(
+        photo: PhotoCandidate,
+        kind: PhotoKind = activeKind,
+        band: ScoreBand = scoreBand,
+        direction: Orientation = orientation,
+    ): Boolean = photo.dateMs in startDateMs..endDateMs &&
+        (kind == PhotoKind.ALL || photo.kind == kind) &&
+        (band == ScoreBand.ALL || photo.scoreBand == band) &&
+        (direction == Orientation.ALL || photo.orientation == direction)
+
+    val visible = state.candidates.filter { matchesFilters(it) }
+    // Each option replaces only its own group's selection, keeping the other filters.
+    val scoreCounts = ScoreBand.entries.associateWith { band -> state.candidates.count { matchesFilters(it, band = band) } }
+    val kindCounts = PhotoKind.entries.associateWith { kind -> state.candidates.count { matchesFilters(it, kind = kind) } }
+    val orientationCounts = Orientation.entries.associateWith { direction -> state.candidates.count { matchesFilters(it, direction = direction) } }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         viewModel.export(uri, visible)
@@ -205,16 +225,19 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
                 Text("已完成 ${state.candidates.size} 张评分；当前显示 ${visible.size} 张", fontWeight = FontWeight.SemiBold)
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(ScoreBand.entries, scoreBand, { it.label }, { band -> if (band == ScoreBand.ALL) state.candidates.size else state.candidates.count { it.scoreBand == band } }) { scoreBand = it }
+                FilterGroup(ScoreBand.entries, scoreBand, ScoreBand.ALL, { it.label }, { scoreCounts.getValue(it) }) { scoreBand = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(PhotoKind.entries, activeKind, { it.label }, { kind -> viewModel.count(kind) }) { activeKind = it }
+                FilterGroup(PhotoKind.entries, activeKind, PhotoKind.ALL, { it.label }, { kindCounts.getValue(it) }) { activeKind = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(Orientation.entries, orientation, { it.label }, { value -> if (value == Orientation.ALL) state.candidates.size else state.candidates.count { it.orientation == value } }) { orientation = it }
+                FilterGroup(Orientation.entries, orientation, Orientation.ALL, { it.label }, { orientationCounts.getValue(it) }) { orientation = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text("导出当前筛选结果 (${visible.size})") }
+            }
+            if (visible.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("当前条件下没有照片，请选择“全部”放宽筛选条件，或调整日期范围。", style = MaterialTheme.typography.bodyMedium)
             }
             items(visible, key = { it.uri.toString() }) { candidate -> CandidateCard(candidate) { previewCandidate = candidate } }
         } else if (!state.isScanning && state.lastScan != null) {
@@ -387,9 +410,18 @@ private fun endOfDay(timeMs: Long): Long = Calendar.getInstance().apply {
 }.timeInMillis
 
 @Composable
-private fun <T> FilterGroup(values: Iterable<T>, selected: T, label: (T) -> String, count: (T) -> Int, select: (T) -> Unit) {
+private fun <T> FilterGroup(values: Iterable<T>, selected: T, allValue: T, label: (T) -> String, count: (T) -> Int, select: (T) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        lazyRowItems(values.toList()) { value -> FilterChip(selected = selected == value, onClick = { select(value) }, label = { Text("${label(value)} (${count(value)})") }) }
+        lazyRowItems(values.toList()) { value ->
+            val optionCount = count(value)
+            FilterChip(
+                selected = selected == value,
+                onClick = { select(value) },
+                // Keep a way to clear filters even when a new scan/date range has no matches.
+                enabled = value == allValue || optionCount > 0,
+                label = { Text("${label(value)} ($optionCount)") },
+            )
+        }
     }
 }
 
@@ -415,14 +447,57 @@ private fun Progress(progress: com.awesomephoto.model.ScanProgress) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
-    Card(modifier = Modifier.clickable(onClick = onPreview)) {
-        Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            AsyncImage(model = candidate.uri, contentDescription = candidate.displayName, modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
-            Text("${candidate.score} 分 · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-            Text(candidate.semanticLabels.joinToString(" · ").ifBlank { candidate.kind.label }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    val context = LocalContext.current
+    var showActions by remember(candidate.uri) { mutableStateOf(false) }
+    Box {
+        Card(modifier = Modifier.combinedClickable(
+            onClick = onPreview,
+            onClickLabel = "预览照片",
+            onLongClick = { showActions = true },
+            onLongClickLabel = "分享或用其他应用打开",
+        )) {
+            Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AsyncImage(model = candidate.uri, contentDescription = candidate.displayName, modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                Text("${candidate.score} 分 · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(candidate.semanticLabels.joinToString(" · ").ifBlank { candidate.kind.label }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
         }
+        DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+            DropdownMenuItem(text = { Text("分享") }, onClick = {
+                showActions = false
+                launchPhotoAction(context, candidate, Intent.ACTION_SEND)
+            })
+            DropdownMenuItem(text = { Text("用其他应用打开") }, onClick = {
+                showActions = false
+                launchPhotoAction(context, candidate, Intent.ACTION_VIEW)
+            })
+        }
+    }
+}
+
+private fun launchPhotoAction(context: android.content.Context, candidate: PhotoCandidate, action: String) {
+    try {
+        val mimeType = context.contentResolver.getType(candidate.uri) ?: "image/*"
+        val intent = Intent(action).apply {
+            if (action == Intent.ACTION_SEND) {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, candidate.uri)
+                putExtra(Intent.EXTRA_TITLE, candidate.displayName)
+            } else {
+                setDataAndType(candidate.uri, mimeType)
+            }
+            // Grant temporary access to this photo, including when access is limited to selected photos.
+            clipData = ClipData.newRawUri(candidate.displayName, candidate.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, if (action == Intent.ACTION_SEND) "分享照片" else "用其他应用打开"))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "没有可处理此照片的应用", Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(context, "无法访问此照片，请检查相册访问权限", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -430,10 +505,26 @@ private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
 private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit) {
     var details by remember(candidate.uri) { mutableStateOf<PhotoDetails?>(null) }
     val context = LocalContext.current
-    LaunchedEffect(candidate.uri) { details = loadPhotoDetails(context, candidate.uri) }
+    var hasLocationAccess by remember { mutableStateOf(hasPhotoLocationAccess(context)) }
+    var reload by remember { mutableStateOf(0) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasLocationAccess = hasPhotoLocationAccess(context)
+        permissionDenied = !granted
+        reload++
+    }
+    LifecycleResumeEffect(Unit) {
+        hasLocationAccess = hasPhotoLocationAccess(context)
+        reload++
+        onPauseOrDispose { }
+    }
+    LaunchedEffect(candidate.uri, hasLocationAccess, reload) {
+        details = null
+        details = loadPhotoDetails(context, candidate.uri)
+    }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     Text("×", modifier = Modifier.size(32.dp).clickable(onClick = onDismiss), style = MaterialTheme.typography.headlineSmall)
                 }
@@ -445,27 +536,53 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                 )
                 Text("${candidate.score} 分 · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
                 details?.takenAt?.let { Text("拍摄于 $it", style = MaterialTheme.typography.bodySmall) }
-                details?.let { Text("地点：${it.placeName ?: "未能识别"}", style = MaterialTheme.typography.bodySmall) }
+                Text("地点：${details?.placeName ?: "正在读取…"}", style = MaterialTheme.typography.bodySmall)
+                if (!hasLocationAccess && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    TextButton(onClick = {
+                        if (permissionDenied) {
+                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                        } else {
+                            locationPermission.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                        }
+                    }) { Text(if (permissionDenied) "前往设置开启照片位置权限" else "允许读取照片位置") }
+                }
             }
         }
     }
 }
 
-private data class PhotoDetails(val takenAt: String?, val placeName: String?)
+private data class PhotoDetails(val takenAt: String?, val placeName: String)
+
+private fun hasPhotoLocationAccess(context: android.content.Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+        context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 private suspend fun loadPhotoDetails(context: android.content.Context, uri: android.net.Uri): PhotoDetails = withContext(Dispatchers.IO) {
-    val exif = runCatching {
-        context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor -> ExifInterface(descriptor.fileDescriptor) }
-    }.getOrNull() ?: return@withContext PhotoDetails(null, null)
+    val canReadLocation = hasPhotoLocationAccess(context)
+    // Android 10+ redacts GPS from ordinary MediaStore reads, even with photo access.
+    val originalUri = if (canReadLocation && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.setRequireOriginal(uri)
+    } else uri
+    fun readExif(source: Uri): ExifInterface? = runCatching {
+        context.contentResolver.openFileDescriptor(source, "r")?.use { descriptor -> ExifInterface(descriptor.fileDescriptor) }
+    }.getOrNull()
+    val originalExif = readExif(originalUri)
+    // Preserve the capture date if the provider cannot supply the original file.
+    val exif = originalExif ?: if (originalUri != uri) readExif(uri) else null
+    val failure = if (!canReadLocation) "需要允许读取照片位置信息" else "无法读取原图位置信息，请重试"
+    if (exif == null) return@withContext PhotoDetails(null, failure)
     val takenAt = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
         ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
     val coordinates = FloatArray(2)
-    val placeName = if (exif.getLatLong(coordinates) && Geocoder.isPresent()) runCatching {
+    if (!canReadLocation || originalExif == null) return@withContext PhotoDetails(takenAt, failure)
+    if (!exif.getLatLong(coordinates)) return@withContext PhotoDetails(takenAt, "照片文件未记录位置信息")
+    val coordinateLabel = String.format(Locale.getDefault(), "纬度 %.5f，经度 %.5f", coordinates[0], coordinates[1])
+    val placeName = if (Geocoder.isPresent()) runCatching {
         val address = Geocoder(context, Locale.getDefault())
             .getFromLocation(coordinates[0].toDouble(), coordinates[1].toDouble(), 1)
             ?.firstOrNull()
-        listOfNotNull(address?.countryName, address?.adminArea, address?.locality, address?.subLocality, address?.featureName)
+        address?.getAddressLine(0)?.takeIf { it.isNotBlank() } ?: listOfNotNull(address?.countryName, address?.adminArea, address?.locality, address?.subLocality, address?.featureName)
             .distinct().joinToString("·").ifBlank { null }
     }.getOrNull() else null
-    PhotoDetails(takenAt, placeName)
+    PhotoDetails(takenAt, placeName ?: "$coordinateLabel（暂未解析出地址）")
 }
