@@ -535,6 +535,7 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                     contentScale = ContentScale.Fit,
                 )
                 Text("${candidate.score} 分 · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                ScoreExplanation(candidate)
                 details?.takenAt?.let { Text("拍摄于 $it", style = MaterialTheme.typography.bodySmall) }
                 Text("地点：${details?.placeName ?: "正在读取…"}", style = MaterialTheme.typography.bodySmall)
                 if (!hasLocationAccess && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -548,6 +549,27 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScoreExplanation(candidate: PhotoCandidate) {
+    var expanded by remember(candidate.uri) { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(if (expanded) "收起评分依据" else "查看评分口径与原因")
+    }
+    if (expanded) {
+        Text("总分 ${candidate.score}/100 · 五项加权后向下取整", fontWeight = FontWeight.SemiBold)
+        Text("按分析缩略图计算，亮度指标使用最长边 256 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤。", style = MaterialTheme.typography.bodySmall)
+        if (candidate.scoreDetails.isEmpty()) {
+            Text("此记录尚无评分明细，请重新分析照片。")
+        }
+        candidate.scoreDetails.forEach { detail ->
+            Text(String.format(Locale.getDefault(), "%s：%.2f / %d 分", detail.name, detail.points, detail.weight), fontWeight = FontWeight.SemiBold)
+            Text("口径：${detail.policy}", style = MaterialTheme.typography.bodySmall)
+            Text("依据：${detail.reason}", style = MaterialTheme.typography.bodySmall)
+        }
+        Text("各项显示值经过四舍五入；总分使用未舍入值计算。", style = MaterialTheme.typography.bodySmall)
     }
 }
 

@@ -16,7 +16,8 @@ data class PhotoCandidate(
     val target: WallpaperTarget,
     val kind: PhotoKind,
     val score: Int,
-    val semanticLabels: List<String>
+    val semanticLabels: List<String>,
+    val scoreDetails: List<ScoreDetail> = emptyList()
 ) {
     val scoreBand: ScoreBand get() = when { score >= 95 -> ScoreBand.ABOVE_95; score >= 90 -> ScoreBand.FROM_90; score >= 85 -> ScoreBand.FROM_85; else -> ScoreBand.BELOW_85 }
     val orientation: Orientation get() = if (height > width) Orientation.PORTRAIT else Orientation.LANDSCAPE
@@ -41,4 +42,9 @@ data class ScanProgress(
     val stage: ScanStage = ScanStage.PREPARING,
 ) {
     val fraction: Float get() = if (total == 0) 0f else done.toFloat() / total
+}
+
+/** The actual normalized component and its measurement at analysis time. */
+data class ScoreDetail(val name: String, val weight: Int, val value: Float, val policy: String, val reason: String) {
+    val points: Float get() = weight * value
 }

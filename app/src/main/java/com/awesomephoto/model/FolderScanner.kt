@@ -55,7 +55,7 @@ class FolderScanner(private val context: Context) {
                     decoded.zip(semantic).forEach { (pair, stats) ->
                         val (pending, bitmap) = pair
                         val score = PhotoScorer.score(bitmap, stats)
-                        val candidate = pending.candidate.copy(score = score, kind = stats.category, semanticLabels = stats.labelNames)
+                        val candidate = pending.candidate.copy(score = score.total, kind = stats.category, semanticLabels = stats.labelNames, scoreDetails = score.details)
                         cache.put(candidate, pending.byteSize, pending.modifiedAt)
                         results += candidate
                     }
