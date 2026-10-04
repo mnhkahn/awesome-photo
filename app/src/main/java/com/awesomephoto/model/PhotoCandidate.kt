@@ -4,7 +4,7 @@ import android.net.Uri
 
 enum class PhotoKind(val label: String) { ALL("全部"), PERSON("人物"), SCENERY("风景"), ARCHITECTURE("建筑"), ART("人文艺术"), OTHER("其他") }
 enum class WallpaperTarget(val label: String) { DESKTOP("桌面"), APP("App") }
-enum class ScoreBand(val label: String) { ALL("全部"), ABOVE_95("95+"), FROM_90("90–94"), FROM_85("85–89"), BELOW_85("85 以下") }
+enum class ScoreBand(val label: String) { ALL("全部"), ABOVE_80("80+"), FROM_70("70–79"), FROM_60("60–69"), BELOW_60("60 以下") }
 enum class Orientation(val label: String) { ALL("全部"), LANDSCAPE("横屏"), PORTRAIT("竖屏") }
 
 data class PhotoCandidate(
@@ -19,11 +19,12 @@ data class PhotoCandidate(
     val semanticLabels: List<String>,
     val scoreDetails: List<ScoreDetail> = emptyList()
 ) {
-    val scoreBand: ScoreBand get() = when { score >= 95 -> ScoreBand.ABOVE_95; score >= 90 -> ScoreBand.FROM_90; score >= 85 -> ScoreBand.FROM_85; else -> ScoreBand.BELOW_85 }
+    val scoreBand: ScoreBand get() = when { score >= 80 -> ScoreBand.ABOVE_80; score >= 70 -> ScoreBand.FROM_70; score >= 60 -> ScoreBand.FROM_60; else -> ScoreBand.BELOW_60 }
     val orientation: Orientation get() = if (height > width) Orientation.PORTRAIT else Orientation.LANDSCAPE
 }
 
 data class ScanSettings(
+    val aestheticModelId: String = "nima-mobile",
     val scanLimit: Int = 100,
     val desktopMinWidth: Int = 1920,
     val desktopMinHeight: Int = 1080,

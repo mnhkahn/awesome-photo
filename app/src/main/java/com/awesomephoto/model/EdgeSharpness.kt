@@ -4,7 +4,10 @@ import kotlin.math.abs
 
 /** Local edge steepness, independent of the proportion of flat pixels in the frame. */
 object EdgeSharpness {
-    data class Measurement(val value: Float, val edges: Int) {
+    // Initial wallpaper sufficiency threshold, not a probability or a perceptual guarantee.
+    const val WALLPAPER_THRESHOLD = .70f
+
+    data class Measurement(val value: Float, val edges: Int, val steepness: Float? = null) {
         val reliable: Boolean get() = edges >= 12
     }
 
@@ -45,6 +48,6 @@ object EdgeSharpness {
         values.sort()
         val middle = values.size / 2
         val median = if (values.size % 2 == 0) (values[middle - 1] + values[middle]) / 2 else values[middle]
-        return Measurement(median, values.size)
+        return Measurement((median / WALLPAPER_THRESHOLD).coerceIn(0f, 1f), values.size, median)
     }
 }

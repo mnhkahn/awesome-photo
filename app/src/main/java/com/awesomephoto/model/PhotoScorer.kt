@@ -1,13 +1,11 @@
 package com.awesomephoto.model
 
 import android.graphics.Bitmap
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 import java.util.Locale
 
-/** Android scoring policy: technical quality + semantic composition. */
+/** Local wallpaper assessment; subject category is a filter, not a bonus. */
 object PhotoScorer {
     // Zero-based ADE20K IDs from the SegFormer model config. Classification only.
     private val sceneryIds = setOf(2, 4, 9, 16, 17, 21, 26, 29, 34, 46, 60, 66, 68, 72, 113, 128)
@@ -16,11 +14,6 @@ object PhotoScorer {
 
     data class SemanticStats(val labels: IntArray, val width: Int, val height: Int) {
         fun coverage(ids: Set<Int>) = labels.count { it in ids }.toFloat() / labels.size
-        fun centroidX(ids: Set<Int>): Float? {
-            var sum = 0f; var count = 0
-            labels.forEachIndexed { index, id -> if (id in ids) { sum += index % width; count++ } }
-            return if (count == 0) null else sum / count / width
-        }
         val hasPerson get() = coverage(setOf(12)) > .015f
         val hasScenery get() = coverage(sceneryIds) > .12f
         val hasArchitecture get() = coverage(architectureIds) > .12f
@@ -43,32 +36,16 @@ object PhotoScorer {
             hasScenery -> PhotoKind.SCENERY
             else -> PhotoKind.OTHER
         }
-        fun compositionScore(): Float {
-            val subject = centroidX(setOf(12, 1, 16, 84, 48)) ?: return 0.72f
-            val distance = min(abs(subject - 1f / 3), abs(subject - 2f / 3))
-            return (1f - distance / (1f / 3)).coerceIn(0.4f, 1f)
-        }
+
     }
 
     data class Result(val details: List<ScoreDetail>) {
-        val total: Int get() = details.sumOf { it.points }.toInt().coerceIn(0, 100)
+        val total: Int get() = (details.sumOf { it.points } + 0.00001).toInt().coerceIn(0, 100)
     }
 
-    private fun decimal(value: Float) = String.format(Locale.ROOT, "%.3f", value)
     private fun percent(value: Float) = String.format(Locale.ROOT, "%.1f%%", value * 100)
 
-    fun score(bitmap: Bitmap, semantics: SemanticStats): Result {
-        val sample = bitmap.scaledToFit(256)
-        val pixels = IntArray(sample.width * sample.height)
-        sample.getPixels(pixels, 0, sample.width, 0, 0, sample.width, sample.height)
-        val luminance = FloatArray(pixels.size) { i ->
-            val p = pixels[i]
-            ((p shr 16 and 0xff) * .299f + (p shr 8 and 0xff) * .587f + (p and 0xff) * .114f) / 255f
-        }
-        val mean = luminance.average().toFloat()
-        val exposure = (1f - abs(mean - .5f) * 2f).coerceIn(0f, 1f)
-        val deviation = sqrt(luminance.map { (it - mean) * (it - mean) }.average()).toFloat()
-        val contrast = deviation.coerceAtMost(.25f) / .25f
+    fun score(bitmap: Bitmap, semantics: SemanticStats, aesthetic: ScoreDetail): Result {
         val sharpSample = bitmap.scaledToFit(1024)
         val sharpPixels = IntArray(sharpSample.width * sharpSample.height)
         sharpSample.getPixels(sharpPixels, 0, sharpSample.width, 0, 0, sharpSample.width, sharpSample.height)
@@ -76,42 +53,34 @@ object PhotoScorer {
             val p = sharpPixels[i]
             ((p shr 16 and 0xff) * .299f + (p shr 8 and 0xff) * .587f + (p and 0xff) * .114f) / 255f
         }
-        val edges = EdgeSharpness.measure(sharpLuma, sharpSample.width, sharpSample.height)
+        val result = scoreSample(sharpLuma, sharpSample.width, sharpSample.height, semantics)
+        if (sharpSample !== bitmap) sharpSample.recycle()
+        return WallpaperAssessment.combine(aesthetic, WallpaperAssessment.subject(semantics), result.details.single())
+    }
+
+    internal fun scoreSample(sharpLuma: FloatArray, width: Int, height: Int, semantics: SemanticStats): Result {
+        val edges = EdgeSharpness.measure(sharpLuma, width, height)
         val personEdges = if (semantics.hasPerson) {
             val mask = BooleanArray(sharpLuma.size) { i ->
-                val x = (i % sharpSample.width) * semantics.width / sharpSample.width
-                val y = (i / sharpSample.width) * semantics.height / sharpSample.height
+                val x = (i % width) * semantics.width / width
+                val y = (i / width) * semantics.height / height
                 semantics.labels[y * semantics.width + x] == 12
             }
-            EdgeSharpness.measure(sharpLuma, sharpSample.width, sharpSample.height, mask)
+            EdgeSharpness.measure(sharpLuma, width, height, mask)
         } else null
         val sharpness = if (personEdges?.reliable == true) .7f * personEdges.value + .3f * edges.value else edges.value
         val sharpReason = if (!edges.reliable) {
             "仅找到 ${edges.edges} 个有效边缘，证据不足，暂按中性 50% 计分，不据此判断模糊。"
         } else {
-            "在 ${sharpSample.width}×${sharpSample.height} 样本中检测到 ${edges.edges} 个有效边缘，全图边缘清晰度 ${percent(edges.value)}。" +
-                if (personEdges?.reliable == true) "人物区域 ${personEdges.edges} 个边缘，清晰度 ${percent(personEdges.value)}；人物占 70%、全图占 30%。"
+            "在 ${width}×${height} 样本中检测到 ${edges.edges} 个有效边缘，全图边缘指标 ${percent(edges.steepness ?: 0f)}，${if (edges.value >= 1f) "达到壁纸清晰度要求" else "未达到壁纸清晰度达标线"}。" +
+                if (personEdges?.reliable == true) "人物区域 ${personEdges.edges} 个边缘，边缘指标 ${percent(personEdges.steepness ?: 0f)}，${if (personEdges.value >= 1f) "达到壁纸清晰度要求" else "未达到壁纸清晰度达标线"}；人物占 70%、全图占 30%。"
                 else "人物区域未提供足够有效边缘，使用全图结果。"
         }
-        if (sharpSample !== bitmap) sharpSample.recycle()
-        val composition = semantics.compositionScore()
-        val subject = semantics.centroidX(setOf(12, 1, 16, 84, 48))
         val details = listOf(
-            ScoreDetail("清晰度", 30.0 / 85 * 100, sharpness,
-                "最长边 1024 像素，轻度降噪后评估有效边缘的局部陡峭程度；平坦区域不计入平均，人物边缘充足时优先参考人物。",
-                sharpReason),
-            ScoreDetail("曝光", 20.0 / 85 * 100, exposure,
-                "1 − |平均亮度 − 0.5| × 2；平均亮度越接近 0.5，得分越高。",
-                "本图平均亮度 ${decimal(mean)}（0 为黑、1 为白），${if (mean < .5f) "低于" else "达到或高于"}目标 0.5。此项不单独检测局部过曝。"),
-            ScoreDetail("对比度", 15.0 / 85 * 100, contrast,
-                "亮度标准差 ÷ 0.25，上限 100%。",
-                "本图亮度标准差 ${decimal(deviation)}，${if (deviation >= .25f) "已达到满分阈值" else "低于满分阈值 0.25"}。"),
-            ScoreDetail("主体构图", 20.0 / 85 * 100, composition,
-                "人物、建筑、山体的合并重心越接近横向 1/3 或 2/3，得分越高；最低 40%，无主体按 72%。",
-                if (subject == null) "未识别到上述主体，使用默认 72%。" else "本图主体横向重心在 ${percent(subject)}，距最近三分线 ${percent(min(abs(subject - 1f / 3), abs(subject - 2f / 3)))} 画面宽度；不评估纵向位置。"),
-
+            ScoreDetail("清晰度", 100.0, sharpness,
+                "评价壁纸素材清晰度：最长边 1024 像素，边缘指标达到 ${percent(EdgeSharpness.WALLPAPER_THRESHOLD)} 即满分，低于达标线按比例计分；人物边缘充足时人物占 70%、全图占 30%。纯色、低纹理和虚化背景不直接扣分，此项不评价美感。",
+                sharpReason)
         )
-        if (sample !== bitmap) sample.recycle()
         return Result(details)
     }
 

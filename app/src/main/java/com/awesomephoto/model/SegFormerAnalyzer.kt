@@ -1,41 +1,16 @@
 package com.awesomephoto.model
 
-import android.content.Context
 import android.graphics.Bitmap
-import com.awesomephoto.BuildConfig
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.io.File
-import java.io.FileNotFoundException
 import java.nio.FloatBuffer
 
 /** Runs the exact ADE20K semantic model locally. No URI or bitmap leaves the device. */
-class SegFormerAnalyzer(context: Context) : AutoCloseable {
+class SegFormerAnalyzer(modelFile: File) : AutoCloseable {
     private val environment = OrtEnvironment.getEnvironment()
-    private val session: OrtSession
-
-    init {
-        val modelFile = File(context.cacheDir, "segformer-${BuildConfig.MODEL_FINGERPRINT}.onnx")
-        if (!modelFile.exists() || modelFile.length() == 0L) {
-            val input = try {
-                context.assets.open("segformer_b0_ade512_int8.onnx")
-            } catch (error: FileNotFoundException) {
-                throw IllegalStateException("安装包缺少照片分析模型，请安装包含完整模型的新版本", error)
-            }
-            input.use { source ->
-                val temporary = File.createTempFile("segformer-", ".tmp", context.cacheDir)
-                try {
-                    temporary.outputStream().use { source.copyTo(it) }
-                    check(temporary.length() > 0L) { "安装包中的照片分析模型为空，请重新安装完整版本" }
-                    check(temporary.renameTo(modelFile)) { "无法保存照片分析模型，请检查设备存储空间" }
-                } finally {
-                    temporary.delete()
-                }
-            }
-        }
-        session = OrtSession.SessionOptions().use { environment.createSession(modelFile.absolutePath, it) }
-    }
+    private val session = OrtSession.SessionOptions().use { environment.createSession(modelFile.absolutePath, it) }
 
     fun analyzeBatch(bitmaps: List<Bitmap>): List<PhotoScorer.SemanticStats> {
         require(bitmaps.isNotEmpty())
@@ -43,15 +18,17 @@ class SegFormerAnalyzer(context: Context) : AutoCloseable {
         val batch = FloatArray(bitmaps.size * 3 * size * size)
         bitmaps.forEachIndexed { imageIndex, bitmap ->
             val scaled = Bitmap.createScaledBitmap(bitmap, size, size, true)
-            val pixels = IntArray(size * size)
-            scaled.getPixels(pixels, 0, size, 0, 0, size, size)
-            for (pixelIndex in pixels.indices) {
-                val p = pixels[pixelIndex]
-                val rgb = floatArrayOf((p shr 16 and 0xff) / 255f, (p shr 8 and 0xff) / 255f, (p and 0xff) / 255f)
-                val mean = floatArrayOf(.485f, .456f, .406f)
-                val std = floatArrayOf(.229f, .224f, .225f)
-                for (channel in 0..2) batch[(imageIndex * 3 + channel) * size * size + pixelIndex] = (rgb[channel] - mean[channel]) / std[channel]
-            }
+            try {
+                val plane = size * size
+                val pixels = IntArray(plane)
+                scaled.getPixels(pixels, 0, size, 0, 0, size, size)
+                for (i in pixels.indices) {
+                    val p = pixels[i]
+                    batch[imageIndex * 3 * plane + i] = ((p shr 16 and 255) / 255f - .485f) / .229f
+                    batch[(imageIndex * 3 + 1) * plane + i] = ((p shr 8 and 255) / 255f - .456f) / .224f
+                    batch[(imageIndex * 3 + 2) * plane + i] = ((p and 255) / 255f - .406f) / .225f
+                }
+            } finally { if (scaled !== bitmap) scaled.recycle() }
         }
         val tensor = OnnxTensor.createTensor(environment, FloatBuffer.wrap(batch), longArrayOf(bitmaps.size.toLong(), 3, size.toLong(), size.toLong()))
         tensor.use {

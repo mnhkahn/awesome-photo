@@ -62,7 +62,11 @@ jobs:
       - name: Export and validate Android model
         run: |
           python -m pip install -r tools/requirements-model.txt
+          python -m pip install --no-deps -r tools/requirements-topiq.txt
           python tools/export_android_model.py --download
+          python tools/export_aesthetic_model.py --download
+          python tools/export_topiq_model.py --download
+          python tools/package_models.py --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION"
       - name: Build signed APK
         run: |
           VERSION_NAME="${VERSION#v}"
@@ -74,16 +78,15 @@ jobs:
             gradle_args+=("-PappUpdateUrl=$APP_UPDATE_URL")
           fi
           ./gradlew "${gradle_args[@]}"
-      - name: Verify APK contains the model
+      - name: Verify lightweight APK
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          python - <<'PYCODE'
+          import json
           from zipfile import ZipFile
-          name = 'segformer_b0_ade512_int8.onnx'
           with ZipFile('app/build/outputs/apk/release/app-release.apk') as apk:
-              if apk.read(f'assets/{name}') != Path(f'app/src/main/assets/{name}').read_bytes():
-                  raise SystemExit('Packaged model does not match the validated export')
-          PY
+              assert not any(n.endswith('.onnx') for n in apk.namelist()), 'Model weights must not be bundled'
+              assert len(json.loads(apk.read('assets/models.json'))['models']) == 3
+          PYCODE
       - name: Generate release notes with git-chglog
         run: |
           go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.0
@@ -93,6 +96,12 @@ jobs:
             git-chglog --next-tag "$VERSION" > RELEASE_NOTES.md
           fi
           test -s RELEASE_NOTES.md
+      - name: Publish APK and model download assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" app/build/outputs/apk/release/app-release.apk build/model-downloads/*.onnx build/model-downloads/models.json app/src/main/assets/*-LICENSE.txt \
+            --repo "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file RELEASE_NOTES.md
       - name: Upload to Pgyer and wait for publication
         id: pgyer
         run: |
@@ -139,15 +148,6 @@ jobs:
           done
           echo 'Timed out waiting for Pgyer publication.' >&2
           exit 1
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$VERSION" app/build/outputs/apk/release/app-release.apk \
-            --repo "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file RELEASE_NOTES.md
-          if [ -n '${{ steps.pgyer.outputs.download_page }}' ]; then
-            echo "Pgyer download page: ${{ steps.pgyer.outputs.download_page }}" >> "$GITHUB_STEP_SUMMARY"
-          fi
       - name: Notify Lark about the published release
         env:
           PGYER_DOWNLOAD_PAGE: ${{ steps.pgyer.outputs.download_page }}

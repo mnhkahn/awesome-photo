@@ -14,25 +14,25 @@ val appUpdateUrl = providers.gradleProperty("appUpdateUrl").orElse("https://www.
 // Content-based cache identity: stable across machines/builds, changes with analysis inputs.
 fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
-val modelAsset = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
-val modelFingerprint = if (modelAsset.asFile.isFile) sha256(providers.fileContents(modelAsset).asBytes.get()) else "missing-model"
-val analysisSources = listOf("PhotoScorer.kt", "EdgeSharpness.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
+val analysisSources = listOf("ModelCatalog.kt", "ModelDownloadStore.kt", "ModelRepository.kt", "WallpaperAssessment.kt", "AestheticAnalyzer.kt", "PhotoScorer.kt", "EdgeSharpness.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
 val analysisFingerprint = sha256((analysisSources.joinToString("\n") { name ->
     val source = layout.projectDirectory.file("src/main/java/com/awesomephoto/model/$name")
     "$name:${sha256(providers.fileContents(source).asBytes.get())}"
-} + "\nmodel:$modelFingerprint").toByteArray(Charsets.UTF_8))
+}).toByteArray(Charsets.UTF_8))
 
-val verifyModelAsset by tasks.registering {
-    val model = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
-    doLast {
-        check(model.asFile.isFile && model.asFile.length() > 0) {
-            "Missing or empty SegFormer model. Run: python tools/export_android_model.py --download"
+val prepareLightAssets by tasks.registering(Sync::class) {
+    from("src/main/assets") { exclude("**/*.onnx") }
+    into(layout.buildDirectory.dir("generated/light-assets"))
+    doFirst {
+        check(file("src/main/assets/models.json").isFile) {
+            "Missing model catalog. Run: python tools/package_models.py --base-url <release-assets-url>"
         }
     }
 }
-tasks.named("preBuild") { dependsOn(verifyModelAsset) }
+tasks.named("preBuild") { dependsOn(prepareLightAssets) }
 
 android {
+    sourceSets.getByName("main").assets.setSrcDirs(listOf(layout.buildDirectory.dir("generated/light-assets")))
     namespace = "com.awesomephoto"
     compileSdk = 35
 
@@ -44,7 +44,6 @@ android {
         versionName = releaseVersionName.get()
 
         buildConfigField("String", "ANALYSIS_FINGERPRINT", "\"$analysisFingerprint\"")
-        buildConfigField("String", "MODEL_FINGERPRINT", "\"$modelFingerprint\"")
 
         buildConfigField("String", "APP_UPDATE_URL", "\"${appUpdateUrl.get()}\"")
 

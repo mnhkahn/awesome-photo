@@ -8,10 +8,11 @@ import android.provider.MediaStore
 import android.content.ContentUris
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 
 class FolderScanner(private val context: Context) {
     private val contentResolver = context.contentResolver
-    private val cache = AnalysisCache(context)
+    private val models = ModelRepository(context)
     private val batchSize = 4
 
     data class ScanResult(
@@ -21,6 +22,9 @@ class FolderScanner(private val context: Context) {
     )
 
     suspend fun scan(settings: ScanSettings, report: (ScanProgress) -> Unit): ScanResult = withContext(Dispatchers.Default) {
+        val chosen = models.catalog.aesthetic(settings.aestheticModelId)
+        val segmenter = models.catalog.segmentation
+        val cache = AnalysisCache(context, chosen.cacheIdentity + ":" + segmenter.cacheIdentity)
         report(ScanProgress(0, 0, "正在查找所选日期的图片", ScanStage.DISCOVERING))
         val files = collectImageFiles(settings, report)
         val prefiltered = mutableListOf<PendingPhoto>()
@@ -42,29 +46,33 @@ class FolderScanner(private val context: Context) {
         val results = mutableListOf<PhotoCandidate>()
         var done = 0
         var analyzer: SegFormerAnalyzer? = null
+        var aesthetics: AestheticAnalyzer? = null
         try {
             prefiltered.chunked(batchSize).forEach { chunk ->
+                ensureActive()
                 val misses = mutableListOf<PendingPhoto>()
                 chunk.forEach { pending ->
                     cache.get(pending.candidate, pending.byteSize, pending.modifiedAt)?.let(results::add) ?: misses.add(pending)
                 }
                 val decoded = misses.mapNotNull { item -> decodeForAnalysis(item.candidate.uri)?.let { item to it } }
                 if (decoded.isNotEmpty()) {
-                    // Only create the 4 MB model session when uncached images actually need inference.
-                    val semantic = (analyzer ?: SegFormerAnalyzer(context).also { analyzer = it }).analyzeBatch(decoded.map { it.second })
-                    decoded.zip(semantic).forEach { (pair, stats) ->
-                        val (pending, bitmap) = pair
-                        val score = PhotoScorer.score(bitmap, stats)
-                        val candidate = pending.candidate.copy(score = score.total, kind = stats.category, semanticLabels = stats.labelNames, scoreDetails = score.details)
-                        cache.put(candidate, pending.byteSize, pending.modifiedAt)
-                        results += candidate
-                    }
+                    try {
+                        val aesthetic = (aesthetics ?: AestheticAnalyzer(models.prepare(chosen), chosen).also { aesthetics = it }).analyzeBatch(decoded.map { it.second })
+                        val semantic = (analyzer ?: SegFormerAnalyzer(models.prepare(segmenter)).also { analyzer = it }).analyzeBatch(decoded.map { it.second })
+                        decoded.zip(semantic).forEachIndexed { index, (pair, stats) ->
+                            val (pending, bitmap) = pair
+                            val score = PhotoScorer.score(bitmap, stats, aesthetic[index])
+                            val candidate = pending.candidate.copy(score = score.total, kind = stats.category, semanticLabels = stats.labelNames, scoreDetails = score.details)
+                            cache.put(candidate, pending.byteSize, pending.modifiedAt)
+                            results += candidate
+                        }
+                    } finally { decoded.forEach { it.second.recycle() } }
                 }
                 done += chunk.size
                 report(ScanProgress(done, prefiltered.size, chunk.last().candidate.displayName, ScanStage.ANALYSING))
             }
         } finally {
-            analyzer?.close()
+            try { analyzer?.close() } finally { try { aesthetics?.close() } finally { cache.close() } }
         }
         ScanResult(
             candidates = results.sortedByDescending { it.score },
@@ -111,8 +119,12 @@ class FolderScanner(private val context: Context) {
         else -> null
     }
 
-    private fun decodeForAnalysis(uri: Uri): Bitmap? = contentResolver.openInputStream(uri)?.use { input ->
-        val options = BitmapFactory.Options().apply { inSampleSize = 2 }
-        BitmapFactory.decodeStream(input, null, options)
+    private fun decodeForAnalysis(uri: Uri): Bitmap? {
+        val size = bounds(uri) ?: return null
+        var sample = 1
+        while (maxOf(size.first, size.second) / sample > 2048) sample *= 2
+        return contentResolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = sample })
+        }
     }
 }

@@ -144,7 +144,7 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     val calendar = remember { Calendar.getInstance() }
     var startDateMs by remember { mutableStateOf(startOfDay(calendar.timeInMillis - 6 * 24 * 60 * 60 * 1000L)) }
     var endDateMs by remember { mutableStateOf(endOfDay(calendar.timeInMillis)) }
-    var scoreBand by remember { mutableStateOf(ScoreBand.ABOVE_95) }
+    var scoreBand by remember { mutableStateOf(ScoreBand.ALL) }
     var orientation by remember { mutableStateOf(Orientation.ALL) }
     var previewCandidate by remember { mutableStateOf<PhotoCandidate?>(null) }
     val context = LocalContext.current
@@ -185,7 +185,10 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-        Text("照片仅在本机按类型、尺寸、语义和构图处理，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
+        Text("照片仅在本机评价美感、主体明确度和清晰度，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            ModelSelectionPanel(state, viewModel::selectModel, viewModel::downloadModels)
         }
         if (!state.hasPhotoAccess) item(span = { GridItemSpan(maxLineSpan) }) {
             Text("需要相册访问权限才能分析照片；若未授权，可在系统设置中开启本应用的照片访问权限。", style = MaterialTheme.typography.bodySmall)
@@ -210,13 +213,13 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && state.hasPhotoAccess) { Text("开始分析") }
+            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && !state.preparingModels && state.modelsReady && state.hasPhotoAccess) { Text("开始分析") }
         }
         state.error?.let { message -> item(span = { GridItemSpan(maxLineSpan) }) { Text(message, color = MaterialTheme.colorScheme.error) } }
         if (state.isScanning) item(span = { GridItemSpan(maxLineSpan) }) { Progress(state.progress) }
         if (!state.isScanning && state.candidates.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("已完成 ${state.candidates.size} 张评分；当前显示 ${visible.size} 张", fontWeight = FontWeight.SemiBold)
+                Text("已完成 ${state.candidates.size} 张壁纸评分；当前显示 ${visible.size} 张", fontWeight = FontWeight.SemiBold)
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 FilterGroup(ScoreBand.entries, scoreBand, ScoreBand.ALL, { it.label }, { scoreCounts.getValue(it) }) { scoreBand = it }
@@ -442,7 +445,7 @@ private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
         )) {
             Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AsyncImage(model = candidate.uri, contentDescription = candidate.displayName, modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
-                Text("${candidate.score} 分 · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text("模型参考分 ${candidate.score} · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 Text(candidate.semanticLabels.joinToString(" · ").ifBlank { candidate.kind.label }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
@@ -515,7 +518,7 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                     modifier = Modifier.fillMaxWidth().height(560.dp).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Fit,
                 )
-                Text("${candidate.score} 分 · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                Text("模型参考分 ${candidate.score} · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
                 ScoreExplanation(candidate)
                 details?.takenAt?.let { Text("拍摄于 $it", style = MaterialTheme.typography.bodySmall) }
                 Text("地点：${details?.placeName ?: "正在读取…"}", style = MaterialTheme.typography.bodySmall)
@@ -540,8 +543,8 @@ private fun ScoreExplanation(candidate: PhotoCandidate) {
         Text(if (expanded) "收起评分依据" else "查看评分口径与原因")
     }
     if (expanded) {
-        Text("总分 ${candidate.score}/100 · 四项加权后向下取整", fontWeight = FontWeight.SemiBold)
-        Text("按分析缩略图计算，曝光和对比度使用最长边 256 像素、清晰度使用最长边 1024 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤，题材类别不加减分。", style = MaterialTheme.typography.bodySmall)
+        Text("模型参考分 ${candidate.score}/100 · 向下取整", fontWeight = FontWeight.SemiBold)
+        Text("本地审美模型占 70%，主体区域连贯性占 20%，清晰度占 10%。尚未按你的喜好校准，先作为排序参考，不代表及格率或个人回忆价值；不评价屏幕适配。", style = MaterialTheme.typography.bodySmall)
         if (candidate.scoreDetails.isEmpty()) {
             Text("此记录尚无评分明细，请重新分析照片。")
         }
@@ -550,7 +553,7 @@ private fun ScoreExplanation(candidate: PhotoCandidate) {
             Text("口径：${detail.policy}", style = MaterialTheme.typography.bodySmall)
             Text("依据：${detail.reason}", style = MaterialTheme.typography.bodySmall)
         }
-        Text("各项显示值经过四舍五入；总分使用未舍入值计算。", style = MaterialTheme.typography.bodySmall)
+        Text("明细显示值经过四舍五入；总分使用未舍入值向下取整。", style = MaterialTheme.typography.bodySmall)
     }
 }
 

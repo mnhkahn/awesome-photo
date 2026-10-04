@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "models": [
+    {
+      "id": "nima-mobile",
+      "name": "NIMA MobileNet（轻量）",
+      "role": "aesthetic",
+      "url": "https://github.com/mnhkahn/awesome-photo/releases/download/v1.0.14/nima-mobile-b2c69d0e64cae27925c6d6918863b137bec3c89877f4c5276f77d2992baf1722.onnx?download=1",
+      "sha256": "b2c69d0e64cae27925c6d6918863b137bec3c89877f4c5276f77d2992baf1722",
+      "bytes": 12844757,
+      "inputSize": 224,
+      "normalization": "minus-one-one",
+      "batchSize": 4
+    },
+    {
+      "id": "topiq-res50",
+      "name": "TOPIQ-IAA ResNet50",
+      "role": "aesthetic",
+      "url": "https://github.com/mnhkahn/awesome-photo/releases/download/v1.0.14/topiq-res50-a3c8cd79dad650d17451a573997b88389462a0216bee7118af2ccf6eaf42135c.onnx?download=1",
+      "sha256": "a3c8cd79dad650d17451a573997b88389462a0216bee7118af2ccf6eaf42135c",
+      "bytes": 276952427,
+      "inputSize": 384,
+      "normalization": "zero-one",
+      "batchSize": 1
+    },
+    {
+      "id": "segformer-b0",
+      "name": "SegFormer B0",
+      "role": "segmentation",
+      "url": "https://github.com/mnhkahn/awesome-photo/releases/download/v1.0.14/segformer-b0-2be49c2a848227574b3c0270dad17e592cac5c4cba8e69f5c118ea15ced9f817.onnx?download=1",
+      "sha256": "2be49c2a848227574b3c0270dad17e592cac5c4cba8e69f5c118ea15ced9f817",
+      "bytes": 4318543,
+      "inputSize": 512,
+      "normalization": "imagenet",
+      "batchSize": 4
+    }
+  ]
+}

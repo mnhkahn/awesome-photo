@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.awesomephoto.model.ModelRepository
+import com.awesomephoto.model.DownloadableModel
+import kotlinx.coroutines.CancellationException
 import com.awesomephoto.model.FolderScanner
 import com.awesomephoto.model.PhotoCandidate
 import com.awesomephoto.model.PhotoDateIndex
@@ -19,6 +22,11 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 data class ScanUiState(
+    val models: List<DownloadableModel> = emptyList(),
+    val downloadedModels: Set<String> = emptySet(),
+    val preparingModels: Boolean = false,
+    val modelsReady: Boolean = false,
+    val modelProgress: String? = null,
     val hasPhotoAccess: Boolean = false,
     val settings: ScanSettings = ScanSettings(),
     val isScanning: Boolean = false,
@@ -37,10 +45,50 @@ data class ScanSummary(
 )
 
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
-    private val _state = MutableStateFlow(ScanUiState())
+    private val models = ModelRepository(application)
+    private val _state = MutableStateFlow(ScanUiState(
+        settings = ScanSettings(aestheticModelId = models.selected.id),
+        models = models.catalog.models, downloadedModels = models.downloadedIds(),
+        modelsReady = models.ready(models.selected.id)
+    ))
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
     private val requestedMonths = mutableSetOf<String>()
     private val pendingMonthLoads = mutableSetOf<String>()
+
+    fun selectModel(id: String) {
+        if (_state.value.isScanning || _state.value.preparingModels) return
+        models.select(id)
+        _state.value = _state.value.copy(settings = _state.value.settings.copy(aestheticModelId = id),
+            modelsReady = models.ready(id), candidates = emptyList(), lastScan = null, error = null)
+        downloadModels()
+    }
+
+    fun downloadModels() {
+        if (_state.value.isScanning || _state.value.preparingModels) return
+        val chosen = models.catalog.aesthetic(_state.value.settings.aestheticModelId)
+        _state.value = _state.value.copy(preparingModels = true, error = null, modelProgress = "正在检查模型")
+        viewModelScope.launch {
+            try {
+                var last = 0L
+                for (model in listOf(chosen, models.catalog.segmentation)) {
+                    models.prepare(model) { name, done, total ->
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (done == 0L || done == total || now - last >= 200) {
+                            last = now
+                            _state.value = _state.value.copy(modelProgress = "$name：${done * 100 / total}%")
+                        }
+                    }
+                }
+                _state.value = _state.value.copy(modelsReady = true, modelProgress = "模型已就绪，可离线分析")
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                _state.value = _state.value.copy(modelsReady = false, modelProgress = null,
+                    error = "模型准备失败：${error.message}。可重试，已下载完成的模型会保留。")
+            } finally {
+                _state.value = _state.value.copy(preparingModels = false, downloadedModels = models.downloadedIds())
+            }
+        }
+    }
 
     fun setPhotoAccess(granted: Boolean) {
         requestedMonths.clear()
@@ -81,6 +129,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun scan(dateStartMs: Long, dateEndMs: Long) {
+        if (_state.value.isScanning || _state.value.preparingModels) return
+        if (!_state.value.modelsReady) { downloadModels(); return }
         val snapshot = _state.value.copy(settings = _state.value.settings.copy(dateStartMs = dateStartMs, dateEndMs = dateEndMs))
         if (!snapshot.hasPhotoAccess) { _state.value = snapshot.copy(error = "请允许访问系统相册后再分析"); return }
         viewModelScope.launch {

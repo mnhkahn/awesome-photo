@@ -25,6 +25,15 @@ class EdgeSharpnessTest {
         assertTrue(blurred.reliable && veryBlurred.reliable)
         assertTrue(sharp.value > blurred.value && blurred.value > veryBlurred.value)
     }
+    @Test fun adequateEdgesSaturateButBlurDoesNot() {
+        val sharp = step(128, 128)
+        val result = EdgeSharpness.measure(sharp, 128, 128)
+        assertTrue(result.steepness!! >= EdgeSharpness.WALLPAPER_THRESHOLD)
+        assertEquals(1f, result.value, 0f)
+        val soft = EdgeSharpness.measure(blur(sharp, 128, 128, 4), 128, 128)
+        assertTrue(soft.reliable && soft.steepness!! < EdgeSharpness.WALLPAPER_THRESHOLD)
+        assertTrue(soft.value < 1f)
+    }
     @Test fun flatImageAndWeakNoiseAreInconclusive() {
         val random = java.util.Random(1)
         for (a in listOf(FloatArray(128 * 128) { .6f }, FloatArray(128 * 128) { .6f + (random.nextFloat() - .5f) * .04f })) {

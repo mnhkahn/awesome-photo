@@ -1,0 +1,4 @@
+# Install with --no-deps after requirements-model.txt; avoid unrelated CUDA/LLM packages.
+torchvision==0.17.2
+timm==1.0.15
+pyiqa==0.1.13
