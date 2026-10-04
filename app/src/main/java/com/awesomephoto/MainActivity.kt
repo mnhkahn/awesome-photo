@@ -559,13 +559,13 @@ private fun ScoreExplanation(candidate: PhotoCandidate) {
         Text(if (expanded) "收起评分依据" else "查看评分口径与原因")
     }
     if (expanded) {
-        Text("总分 ${candidate.score}/100 · 五项加权后向下取整", fontWeight = FontWeight.SemiBold)
-        Text("按分析缩略图计算，亮度指标使用最长边 256 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤。", style = MaterialTheme.typography.bodySmall)
+        Text("总分 ${candidate.score}/100 · 四项加权后向下取整", fontWeight = FontWeight.SemiBold)
+        Text("按分析缩略图计算，亮度指标使用最长边 256 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤，题材类别不加减分。", style = MaterialTheme.typography.bodySmall)
         if (candidate.scoreDetails.isEmpty()) {
             Text("此记录尚无评分明细，请重新分析照片。")
         }
         candidate.scoreDetails.forEach { detail ->
-            Text(String.format(Locale.getDefault(), "%s：%.2f / %d 分", detail.name, detail.points, detail.weight), fontWeight = FontWeight.SemiBold)
+            Text(String.format(Locale.getDefault(), "%s：%.2f / %.2f 分", detail.name, detail.points, detail.weight), fontWeight = FontWeight.SemiBold)
             Text("口径：${detail.policy}", style = MaterialTheme.typography.bodySmall)
             Text("依据：${detail.reason}", style = MaterialTheme.typography.bodySmall)
         }

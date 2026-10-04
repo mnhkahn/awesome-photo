@@ -2,7 +2,7 @@ package com.awesomephoto.model
 
 import android.net.Uri
 
-enum class PhotoKind(val label: String) { ALL("全部"), PERSON("人物"), SCENERY("风景"), OTHER("其他") }
+enum class PhotoKind(val label: String) { ALL("全部"), PERSON("人物"), SCENERY("风景"), ARCHITECTURE("建筑"), ART("人文艺术"), OTHER("其他") }
 enum class WallpaperTarget(val label: String) { DESKTOP("桌面"), APP("App") }
 enum class ScoreBand(val label: String) { ALL("全部"), ABOVE_95("95+"), FROM_90("90–94"), FROM_85("85–89"), BELOW_85("85 以下") }
 enum class Orientation(val label: String) { ALL("全部"), LANDSCAPE("横屏"), PORTRAIT("竖屏") }
@@ -45,6 +45,6 @@ data class ScanProgress(
 }
 
 /** The actual normalized component and its measurement at analysis time. */
-data class ScoreDetail(val name: String, val weight: Int, val value: Float, val policy: String, val reason: String) {
-    val points: Float get() = weight * value
+data class ScoreDetail(val name: String, val weight: Double, val value: Float, val policy: String, val reason: String) {
+    val points: Double get() = weight * value
 }

@@ -3,12 +3,13 @@ package com.awesomephoto.model
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.awesomephoto.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 
 /** Persistent, versioned cache. A changed source file automatically misses. */
 class AnalysisCache(context: Context) : SQLiteOpenHelper(context, "photo_analysis_cache.db", null, 2) {
-    companion object { const val ALGORITHM_VERSION = "segformer-b0-ade20k-score-v1" }
+    companion object { val ALGORITHM_VERSION = "segformer-b0-ade20k-score-v2-categories-v2:${BuildConfig.ANALYSIS_FINGERPRINT}" }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE analysis_cache (
@@ -32,8 +33,8 @@ class AnalysisCache(context: Context) : SQLiteOpenHelper(context, "photo_analysi
                 val rows = JSONArray(cursor.getString(3))
                 List(rows.length()) { index ->
                     val row = rows.getJSONObject(index)
-                    ScoreDetail(row.getString("name"), row.getInt("weight"), row.getDouble("value").toFloat(), row.getString("policy"), row.getString("reason"))
-                }.also { require(it.size == 5) }
+                    ScoreDetail(row.getString("name"), row.getDouble("weight"), row.getDouble("value").toFloat(), row.getString("policy"), row.getString("reason"))
+                }.also { require(it.size == 4) }
             }.getOrNull() ?: return null
             val labels = cursor.getString(2).takeIf(String::isNotEmpty)?.split('\u001f') ?: emptyList()
             return draft.copy(score = cursor.getInt(0), kind = PhotoKind.valueOf(cursor.getString(1)), semanticLabels = labels, scoreDetails = details)

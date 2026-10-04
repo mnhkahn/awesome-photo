@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,17 @@ val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
 val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("1.0")
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1")
 val pgyerDownloadPage = providers.gradleProperty("pgyerDownloadPage").orElse("")
+
+// Content-based cache identity: stable across machines/builds, changes with analysis inputs.
+fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes).joinToString("") { "%02x".format(it) }
+val modelAsset = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
+val modelFingerprint = if (modelAsset.asFile.isFile) sha256(providers.fileContents(modelAsset).asBytes.get()) else "missing-model"
+val analysisSources = listOf("PhotoScorer.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
+val analysisFingerprint = sha256((analysisSources.joinToString("\n") { name ->
+    val source = layout.projectDirectory.file("src/main/java/com/awesomephoto/model/$name")
+    "$name:${sha256(providers.fileContents(source).asBytes.get())}"
+} + "\nmodel:$modelFingerprint").toByteArray(Charsets.UTF_8))
 
 val verifyModelAsset by tasks.registering {
     val model = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
@@ -29,6 +42,9 @@ android {
         targetSdk = 35
         versionCode = releaseVersionCode.get().toInt()
         versionName = releaseVersionName.get()
+
+        buildConfigField("String", "ANALYSIS_FINGERPRINT", "\"$analysisFingerprint\"")
+        buildConfigField("String", "MODEL_FINGERPRINT", "\"$modelFingerprint\"")
 
         // This is a public page, never an API key. Empty for local/debug builds.
         buildConfigField("String", "PGYER_DOWNLOAD_PAGE", "\"${pgyerDownloadPage.get()}\"")

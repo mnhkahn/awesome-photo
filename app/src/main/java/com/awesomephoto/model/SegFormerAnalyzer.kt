@@ -2,6 +2,7 @@ package com.awesomephoto.model
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.awesomephoto.BuildConfig
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -15,10 +16,10 @@ class SegFormerAnalyzer(context: Context) : AutoCloseable {
     private val session: OrtSession
 
     init {
-        val modelFile = File(context.cacheDir, "segformer_b0_ade512_int8.onnx")
+        val modelFile = File(context.cacheDir, "segformer-${BuildConfig.MODEL_FINGERPRINT}.onnx")
         if (!modelFile.exists() || modelFile.length() == 0L) {
             val input = try {
-                context.assets.open(modelFile.name)
+                context.assets.open("segformer_b0_ade512_int8.onnx")
             } catch (error: FileNotFoundException) {
                 throw IllegalStateException("安装包缺少照片分析模型，请安装包含完整模型的新版本", error)
             }
