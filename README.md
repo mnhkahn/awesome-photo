@@ -75,6 +75,8 @@ Android 打包时自动计算分析指纹（SHA-256），覆盖 `PhotoScorer.kt`
 - `PGYER_API_KEY`
 - `LARK_RELEASE_WEBHOOK`：飞书群机器人 webhook；仅在蒲公英和 GitHub Release 均成功后发送通知
 
-可选：在仓库 **Variables** 配置 `PGYER_SHORTCUT`（例如 `awesomephoto`，对应 `https://www.pgyer.com/awesomephoto`）。不配置时蒲公英仍会正常发布；配置后，流水线会将该固定公开下载页编译进 App。此变量应填写蒲公英中已设置的应用短链接，仅用于 App 检查更新，不会创建或修改下载地址，也不作为上传 API 的 `buildChannelShortcut`（分发频道短链接）参数。
+可选：在仓库 **Variables** 配置 `APP_UPDATE_URL`，覆盖默认后端更新接口地址。蒲公英短链接在后端 `conf/app_updates.json` 管理；旧 `PGYER_SHORTCUT` 变量不再被新版打包流程使用。
 
-App 启动时会访问该公开页面，读取最新版本与更新说明。发现更新会显示提示，点击“前往蒲公英更新”后由蒲公英生成短时安装链接并引导安装；App 不从 GitHub 下载，也不包含蒲公英 API Key。
+App 启动时访问 `https://www.cyeam.com/api/apps/awesome-photo/update?versionCode=<当前构建号>`，发现更新后交给系统 DownloadManager 在非计费网络后台下载。回到 App 后可查看进度、失败重试，下载完成校验文件大小、包名、versionCode 和签名，然后发起系统安装确认。首次需允许本应用安装更新；不承诺静默安装。后台下载任务和目标版本会持久化，重开 App 可恢复进度，链接过期可重试获取新链接。安装包来自蒲公英，由 cyeam_web 转发，APK 内没有 API Key。
+
+后端须先部署 `cyeam_web` 的 `/api/apps/` 接口，并配置服务端 `PGYER_API_KEY`。多 App 映射位于后端 `conf/app_updates.json`；本 App 的 id 是 `awesome-photo`、包名是 `com.awesomephoto`。可用 Gradle 参数 `-PappUpdateUrl=https://<服务域名>/api/apps/awesome-photo/update` 覆盖更新接口。蒲公英短链接已不再用于客户端解析版本。后端暂不提供 SHA-256（蒲公英元数据无此字段），客户端依赖 HTTPS、文件大小和 Android 签名/包名/版本校验；系统安装器会最终验证安装包。

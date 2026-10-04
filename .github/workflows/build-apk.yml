@@ -25,7 +25,7 @@ jobs:
       RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || secrets.ANDROID_KEY_PASSWORD }}
       PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}
       LARK_RELEASE_WEBHOOK: ${{ secrets.LARK_RELEASE_WEBHOOK }}
-      PGYER_SHORTCUT: ${{ vars.PGYER_SHORTCUT }}
+      APP_UPDATE_URL: ${{ vars.APP_UPDATE_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,10 +69,9 @@ jobs:
           gradle_args=(--no-daemon :app:assembleRelease \
             -PreleaseVersionName="$VERSION_NAME" \
             -PreleaseVersionCode="$GITHUB_RUN_NUMBER")
-          # A short link is optional. Without one, Pgyer still publishes the APK;
-          # the App simply does not enable public-page update checks.
-          if [ -n "$PGYER_SHORTCUT" ]; then
-            gradle_args+=("-PpgyerDownloadPage=https://www.pgyer.com/$PGYER_SHORTCUT")
+          # Optional override; otherwise Gradle uses the cyeam.com multi-app gateway.
+          if [ -n "$APP_UPDATE_URL" ]; then
+            gradle_args+=("-PappUpdateUrl=$APP_UPDATE_URL")
           fi
           ./gradlew "${gradle_args[@]}"
       - name: Verify APK contains the model
@@ -99,8 +98,7 @@ jobs:
         run: |
           upload_args=(--form "_api_key=$PGYER_API_KEY" --form 'buildType=apk' --form 'buildInstallType=1' \
             --form "buildUpdateDescription=<RELEASE_NOTES.md")
-          # PGYER_SHORTCUT is the app download page used by the APK update checker.
-          # buildChannelShortcut targets an existing distribution channel, not that page.
+          # Upload to the app itself. buildChannelShortcut is only for distribution channels.
           token=$(curl --fail-with-body --silent --show-error --request POST https://www.pgyer.com/apiv2/app/getCOSToken "${upload_args[@]}")
           if ! echo "$token" | jq -e '.code == 0' >/dev/null; then
             echo "$token" | jq '{code, message}' >&2

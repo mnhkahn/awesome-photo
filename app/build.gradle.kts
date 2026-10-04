@@ -9,7 +9,7 @@ plugins {
 val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
 val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("1.0")
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1")
-val pgyerDownloadPage = providers.gradleProperty("pgyerDownloadPage").orElse("")
+val appUpdateUrl = providers.gradleProperty("appUpdateUrl").orElse("https://www.cyeam.com/api/apps/awesome-photo/update")
 
 // Content-based cache identity: stable across machines/builds, changes with analysis inputs.
 fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
@@ -46,8 +46,8 @@ android {
         buildConfigField("String", "ANALYSIS_FINGERPRINT", "\"$analysisFingerprint\"")
         buildConfigField("String", "MODEL_FINGERPRINT", "\"$modelFingerprint\"")
 
-        // This is a public page, never an API key. Empty for local/debug builds.
-        buildConfigField("String", "PGYER_DOWNLOAD_PAGE", "\"${pgyerDownloadPage.get()}\"")
+        buildConfigField("String", "APP_UPDATE_URL", "\"${appUpdateUrl.get()}\"")
+
     }
 
     buildFeatures { compose = true; buildConfig = true }

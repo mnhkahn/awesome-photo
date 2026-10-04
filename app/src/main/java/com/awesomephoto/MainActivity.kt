@@ -147,13 +147,7 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     var scoreBand by remember { mutableStateOf(ScoreBand.ABOVE_95) }
     var orientation by remember { mutableStateOf(Orientation.ALL) }
     var previewCandidate by remember { mutableStateOf<PhotoCandidate?>(null) }
-    var availableUpdate by remember { mutableStateOf<PgyerUpdate?>(null) }
     val context = LocalContext.current
-    LaunchedEffect(Unit) {
-        PgyerUpdateChecker.fetch(BuildConfig.PGYER_DOWNLOAD_PAGE)?.let { update ->
-            if (PgyerUpdateChecker.isNewer(update.version, BuildConfig.VERSION_NAME)) availableUpdate = update
-        }
-    }
     fun matchesFilters(
         photo: PhotoCandidate,
         kind: PhotoKind = activeKind,
@@ -252,20 +246,7 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("选择日期范围后开始分析；结果会直接在这里显示。", style = MaterialTheme.typography.bodyMedium) }
         }
     }
-    availableUpdate?.let { update ->
-        AlertDialog(
-            onDismissRequest = { availableUpdate = null },
-            title = { Text("发现新版本 ${update.version}") },
-            text = { Text(update.notes.ifBlank { "已发布新版本，前往蒲公英下载安装。" }) },
-            confirmButton = {
-                TextButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.PGYER_DOWNLOAD_PAGE)))
-                    availableUpdate = null
-                }) { Text("前往蒲公英更新") }
-            },
-            dismissButton = { TextButton(onClick = { availableUpdate = null }) { Text("稍后") } },
-        )
-    }
+    AppUpdatePanel()
     previewCandidate?.let { candidate -> PhotoPreviewDialog(candidate) { previewCandidate = null } }
 }
 
