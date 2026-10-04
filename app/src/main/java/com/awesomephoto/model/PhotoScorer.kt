@@ -69,20 +69,37 @@ object PhotoScorer {
         val exposure = (1f - abs(mean - .5f) * 2f).coerceIn(0f, 1f)
         val deviation = sqrt(luminance.map { (it - mean) * (it - mean) }.average()).toFloat()
         val contrast = deviation.coerceAtMost(.25f) / .25f
-        var laplacianEnergy = 0f; var samples = 0
-        for (y in 1 until sample.height - 1) for (x in 1 until sample.width - 1) {
-            val i = y * sample.width + x
-            val lap = 4 * luminance[i] - luminance[i - 1] - luminance[i + 1] - luminance[i - sample.width] - luminance[i + sample.width]
-            laplacianEnergy += lap * lap; samples++
+        val sharpSample = bitmap.scaledToFit(1024)
+        val sharpPixels = IntArray(sharpSample.width * sharpSample.height)
+        sharpSample.getPixels(sharpPixels, 0, sharpSample.width, 0, 0, sharpSample.width, sharpSample.height)
+        val sharpLuma = FloatArray(sharpPixels.size) { i ->
+            val p = sharpPixels[i]
+            ((p shr 16 and 0xff) * .299f + (p shr 8 and 0xff) * .587f + (p and 0xff) * .114f) / 255f
         }
-        val edgeEnergy = sqrt(laplacianEnergy / max(samples, 1))
-        val sharpness = (edgeEnergy / .35f).coerceIn(0f, 1f)
+        val edges = EdgeSharpness.measure(sharpLuma, sharpSample.width, sharpSample.height)
+        val personEdges = if (semantics.hasPerson) {
+            val mask = BooleanArray(sharpLuma.size) { i ->
+                val x = (i % sharpSample.width) * semantics.width / sharpSample.width
+                val y = (i / sharpSample.width) * semantics.height / sharpSample.height
+                semantics.labels[y * semantics.width + x] == 12
+            }
+            EdgeSharpness.measure(sharpLuma, sharpSample.width, sharpSample.height, mask)
+        } else null
+        val sharpness = if (personEdges?.reliable == true) .7f * personEdges.value + .3f * edges.value else edges.value
+        val sharpReason = if (!edges.reliable) {
+            "仅找到 ${edges.edges} 个有效边缘，证据不足，暂按中性 50% 计分，不据此判断模糊。"
+        } else {
+            "在 ${sharpSample.width}×${sharpSample.height} 样本中检测到 ${edges.edges} 个有效边缘，全图边缘清晰度 ${percent(edges.value)}。" +
+                if (personEdges?.reliable == true) "人物区域 ${personEdges.edges} 个边缘，清晰度 ${percent(personEdges.value)}；人物占 70%、全图占 30%。"
+                else "人物区域未提供足够有效边缘，使用全图结果。"
+        }
+        if (sharpSample !== bitmap) sharpSample.recycle()
         val composition = semantics.compositionScore()
         val subject = semantics.centroidX(setOf(12, 1, 16, 84, 48))
         val details = listOf(
             ScoreDetail("清晰度", 30.0 / 85 * 100, sharpness,
-                "边缘能量 ÷ 0.35，上限 100%；边缘变化越强，得分越高。",
-                "本图边缘能量 ${decimal(edgeEnergy)}，归一化得分 ${percent(sharpness)}。纹理和噪声也会影响此指标。"),
+                "最长边 1024 像素，轻度降噪后评估有效边缘的局部陡峭程度；平坦区域不计入平均，人物边缘充足时优先参考人物。",
+                sharpReason),
             ScoreDetail("曝光", 20.0 / 85 * 100, exposure,
                 "1 − |平均亮度 − 0.5| × 2；平均亮度越接近 0.5，得分越高。",
                 "本图平均亮度 ${decimal(mean)}（0 为黑、1 为白），${if (mean < .5f) "低于" else "达到或高于"}目标 0.5。此项不单独检测局部过曝。"),
@@ -100,6 +117,6 @@ object PhotoScorer {
 
     private fun Bitmap.scaledToFit(edge: Int): Bitmap {
         val scale = min(1f, edge.toFloat() / max(width, height))
-        return if (scale == 1f) this else Bitmap.createScaledBitmap(this, (width * scale).toInt(), (height * scale).toInt(), true)
+        return if (scale == 1f) this else Bitmap.createScaledBitmap(this, max(1, (width * scale).toInt()), max(1, (height * scale).toInt()), true)
     }
 }

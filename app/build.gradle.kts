@@ -16,7 +16,7 @@ fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
 val modelAsset = layout.projectDirectory.file("src/main/assets/segformer_b0_ade512_int8.onnx")
 val modelFingerprint = if (modelAsset.asFile.isFile) sha256(providers.fileContents(modelAsset).asBytes.get()) else "missing-model"
-val analysisSources = listOf("PhotoScorer.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
+val analysisSources = listOf("PhotoScorer.kt", "EdgeSharpness.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
 val analysisFingerprint = sha256((analysisSources.joinToString("\n") { name ->
     val source = layout.projectDirectory.file("src/main/java/com/awesomephoto/model/$name")
     "$name:${sha256(providers.fileContents(source).asBytes.get())}"

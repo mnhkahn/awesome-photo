@@ -541,7 +541,7 @@ private fun ScoreExplanation(candidate: PhotoCandidate) {
     }
     if (expanded) {
         Text("总分 ${candidate.score}/100 · 四项加权后向下取整", fontWeight = FontWeight.SemiBold)
-        Text("按分析缩略图计算，亮度指标使用最长边 256 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤，题材类别不加减分。", style = MaterialTheme.typography.bodySmall)
+        Text("按分析缩略图计算，曝光和对比度使用最长边 256 像素、清晰度使用最长边 1024 像素的样本。这是壁纸筛选规则，不能代表完整审美；尺寸仅用于入选过滤，题材类别不加减分。", style = MaterialTheme.typography.bodySmall)
         if (candidate.scoreDetails.isEmpty()) {
             Text("此记录尚无评分明细，请重新分析照片。")
         }
