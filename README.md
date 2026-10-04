@@ -72,6 +72,6 @@ python app.py
 - `PGYER_API_KEY`
 - `LARK_RELEASE_WEBHOOK`：飞书群机器人 webhook；仅在蒲公英和 GitHub Release 均成功后发送通知
 
-可选：在仓库 **Variables** 配置 `PGYER_SHORTCUT`（例如 `awesomephoto`，对应 `https://www.pgyer.com/awesomephoto`）。不配置时蒲公英仍会正常发布；配置后，流水线会保持使用该固定公开下载页，并将其编译进 App。
+可选：在仓库 **Variables** 配置 `PGYER_SHORTCUT`（例如 `awesomephoto`，对应 `https://www.pgyer.com/awesomephoto`）。不配置时蒲公英仍会正常发布；配置后，流水线会将该固定公开下载页编译进 App。此变量应填写蒲公英中已设置的应用短链接，仅用于 App 检查更新，不会创建或修改下载地址，也不作为上传 API 的 `buildChannelShortcut`（分发频道短链接）参数。
 
 App 启动时会访问该公开页面，读取最新版本与更新说明。发现更新会显示提示，点击“前往蒲公英更新”后由蒲公英生成短时安装链接并引导安装；App 不从 GitHub 下载，也不包含蒲公英 API Key。

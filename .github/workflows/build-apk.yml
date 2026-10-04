@@ -99,11 +99,13 @@ jobs:
         run: |
           upload_args=(--form "_api_key=$PGYER_API_KEY" --form 'buildType=apk' --form 'buildInstallType=1' \
             --form "buildUpdateDescription=<RELEASE_NOTES.md")
-          if [ -n "$PGYER_SHORTCUT" ]; then
-            upload_args+=(--form "buildChannelShortcut=$PGYER_SHORTCUT")
-          fi
+          # PGYER_SHORTCUT is the app download page used by the APK update checker.
+          # buildChannelShortcut targets an existing distribution channel, not that page.
           token=$(curl --fail-with-body --silent --show-error --request POST https://www.pgyer.com/apiv2/app/getCOSToken "${upload_args[@]}")
-          echo "$token" | jq -e '.code == 0' >/dev/null
+          if ! echo "$token" | jq -e '.code == 0' >/dev/null; then
+            echo "$token" | jq '{code, message}' >&2
+            exit 1
+          fi
           endpoint=$(echo "$token" | jq -r '.data.endpoint')
           build_key=$(echo "$token" | jq -r '.data.key')
           upload_key=$(echo "$token" | jq -r '.data.params.key')
