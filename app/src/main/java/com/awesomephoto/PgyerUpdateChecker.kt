@@ -22,15 +22,30 @@ object PgyerUpdateChecker {
     }
 
     internal fun parse(page: String): PgyerUpdate? {
-        val normalized = page.replace("\\\\\"", "\"")
-        val version = jsonString(normalized, "buildVersion") ?: return null
-        return PgyerUpdate(version, jsonString(normalized, "buildUpdateDescription").orEmpty())
+        val version = jsonString(page, "buildVersion")
+            ?: Regex("""\baVersion\s*=\s*['"](v?\d+(?:\.\d+)+(?:[-.][0-9A-Za-z.]+)?)['"]""")
+                .find(page)?.groupValues?.get(1)
+            ?: return null
+        val notes = jsonString(page, "buildUpdateDescription") ?: htmlNotes(page)
+        return PgyerUpdate(version, notes)
     }
 
     private fun jsonString(page: String, key: String): String? {
-        val expression = Regex("\\\"$key\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"")
-        val raw = expression.find(page)?.groupValues?.get(1) ?: return null
-        return runCatching { JSONObject("{\\\"value\\\":\\\"$raw\\\"}").getString("value") }.getOrElse { raw }
+        val expression = Regex(""""$key"\s*:\s*("(?:\\.|[^"\\])*")""")
+        val quoted = expression.find(page)?.groupValues?.get(1) ?: return null
+        return runCatching { JSONObject("{\"value\":$quoted}").getString("value") }.getOrNull()
+    }
+
+    private fun htmlNotes(page: String): String {
+        val content = Regex("""<div\b[^>]*class\s*=\s*["'][^"']*\bupdate-description\b[^"']*["'][^>]*>(.*?)</div>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+            .find(page)?.groupValues?.get(1) ?: return ""
+        // This public-page block contains text with <br> line breaks, not executable content.
+        return content.replace(Regex("(?i)<br\\s*/?>|</p\\s*>"), "\n")
+            .replace(Regex("<[^>]+>"), "")
+            .replace("&nbsp;", " ").replace("&quot;", "\"").replace("&#39;", "'")
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+            .trim()
     }
 
     internal fun isNewer(candidate: String, installed: String): Boolean {
