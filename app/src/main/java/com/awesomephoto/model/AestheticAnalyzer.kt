@@ -43,7 +43,9 @@ class AestheticAnalyzer(file: File, private val model: DownloadableModel) : Auto
                 @Suppress("UNCHECKED_CAST")
                 val ratings = output[0].value as Array<FloatArray>
                 check(ratings.size == bitmaps.size) { "审美模型返回数量错误" }
-                val calibration = AestheticCalibration.forModel(model.id, model.sha256)
+                val calibration = checkNotNull(AestheticCalibration.forModel(model.id, model.sha256)) {
+                    "当前模型与评分校准版本不匹配，请更新应用；本次不生成未校准评分"
+                }
                 return ratings.map { WallpaperAssessment.aesthetic(it, model.name, calibration) }
             }
         }

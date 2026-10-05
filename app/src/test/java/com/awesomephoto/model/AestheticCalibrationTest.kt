@@ -2,8 +2,19 @@ package com.awesomephoto.model
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 
 class AestheticCalibrationTest {
+    @Test fun shippedCatalogMustMatchRuntimeCalibration() {
+        val catalog = ModelCatalog.parse(File("src/main/assets/models.json").readText())
+        for (model in catalog.aesthetics) {
+            assertNotNull("Release model has no matching calibration: ${model.id}",
+                AestheticCalibration.forModel(model.id, model.sha256))
+        }
+        // v1.1.1 re-exported these files in CI, so neither matched the calibrated artifacts.
+        assertNull(AestheticCalibration.forModel("nima-mobile", "849c6d141b8d8daa83ce4feeb161a266eb3f88cf08c19f99ffabb91ac7082a37"))
+        assertNull(AestheticCalibration.forModel("topiq-res50", "cebe2b8e897eb8508d3e56493bf5a72a8941419a5f428076864c8a33cb7cf856"))
+    }
     private val nima = AestheticCalibration.forModel("nima-mobile", "b2c69d0e64cae27925c6d6918863b137bec3c89877f4c5276f77d2992baf1722")!!
     private val topiq = AestheticCalibration.forModel("topiq-res50", "a3c8cd79dad650d17451a573997b88389462a0216bee7118af2ccf6eaf42135c")!!
 

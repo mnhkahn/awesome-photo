@@ -42,7 +42,7 @@ Android 打包时计算评分代码指纹；缓存键另含所选审美模型和
 
 初版总分 = 美感 70% + 主体明确度（视觉结构近似）20% + 清晰度 10%，最终向下取整。权重是产品初始选择，未经过用户偏好数据校准。默认显示全部结果并按分数排序，提供 80+、70–79、60–69、60 以下筛选。分数是相对筛选依据，不是考试及格率，不能与此前人工评图的 89 分或旧版分数直接比较。
 
-- **画面美感**：按选择使用 [NIMA MobileNet](https://github.com/idealo/image-quality-assessment)（224×224，RGB [-1,1]）或 [TOPIQ-IAA ResNet50](https://github.com/chaofengc/IQA-PyTorch)（384×384，RGB [0,1]，模型内标准化）。二者预测 1–10 分概率分布；已验证权重使用各自的视觉参考校准系数映射到 0–100，再按 70% 计入总分：NIMA 为 `21.101049 × 均值 − 35.624449`，TOPIQ 为 `18.416472 × 均值 − 25.420048`，结果限制在 0–100。未知权重 SHA-256 回退原始 `(均值−1)/9` 口径并在明细显示实际公式。APP 不调用大模型，不虚构逐张光影、色彩解释。
+- **画面美感**：按选择使用 [NIMA MobileNet](https://github.com/idealo/image-quality-assessment)（224×224，RGB [-1,1]）或 [TOPIQ-IAA ResNet50](https://github.com/chaofengc/IQA-PyTorch)（384×384，RGB [0,1]，模型内标准化）。二者预测 1–10 分概率分布；已验证权重使用各自的视觉参考校准系数映射到 0–100，再按 70% 计入总分：NIMA 为 `21.101049 × 均值 − 35.624449`，TOPIQ 为 `18.416472 × 均值 − 25.420048`，结果限制在 0–100。发布前必须验证目录里的模型 SHA-256 与校准匹配；运行时若不匹配，停止分析并提示更新，禁止静默回退旧公式。APP 不调用大模型，不虚构逐张光影、色彩解释。
 - **主体明确度**：用分割图的区域集中连贯性作弱近似。按同标签四邻域找连通区域，忽略小于全图 0.1%（至少 2 像素）的碎片，最大三个区域面积除以全部有效区域面积。任何题材使用同一公式，不依赖类别是否为“其他”。区域不足时按中性 50% 并明确提示。大背景也可能得到高分，此项不能理解主体关系或故事，不能代替人工主题判断。
 - **清晰度**：最长边 1024 像素，轻度降噪后测有效边缘的局部陡峭程度。边缘指标达到 70% 得满分；人物边缘充足时人物占 70%、全图占 30%。平坦区域不计入边缘平均；不足 12 个边缘时用中性 50% 并提示证据不足。70% 是经验线，未针对具体屏幕或观看距离校准。
 
@@ -115,7 +115,7 @@ WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-controls ./gradlew :app:testDebugUnitTest 
 
 然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
 
-已有本地权重时可省略 `--download`。发布流水线导出并验证模型，生成含下载地址、长度及 SHA-256 的目录，上传到 ModelScope，逐个匿名下载并校验完整文件后才更新 APK 的模型目录，再检查 APK 没有混入权重。ModelScope 上传或验证失败会停止发布，保留原目录。GitHub Release 仍保留模型附件作为发布归档，APP 使用 ModelScope 地址。
+已有本地权重时可省略 `--download`。发布流水线使用 `tools/prepare_release_models.py` 获取已提交目录中指定的同一份 ONNX 文件并验证 SHA-256，不在 CI 重新导出，随后生成含下载地址、长度及 SHA-256 的目录，上传到 ModelScope，逐个匿名下载并校验完整文件后才更新 APK 的模型目录，再检查 APK 没有混入权重。ModelScope 上传或验证失败会停止发布，保留原目录。GitHub Release 仍保留模型附件作为发布归档，APP 使用 ModelScope 地址。
 
 NIMA 原权重按上游 Apache-2.0 许可附带声明；TOPIQ/IQA-PyTorch 上游使用 PolyForm Noncommercial 许可，随包及下载附件附带许可全文。TOPIQ 是较大可选模型，约 264 MiB，固定单张推理以控制内存；没有手机实测前不承诺与轻量模型相同的速度。
 
@@ -142,3 +142,5 @@ NIMA 原权重按上游 Apache-2.0 许可附带声明；TOPIQ/IQA-PyTorch 上游
 App 启动时访问 `https://www.cyeam.com/api/apps/awesome-photo/update?versionCode=<当前构建号>`，发现更新后交给系统 DownloadManager 在非计费网络后台下载。回到 App 后可查看进度、失败重试，下载完成校验文件大小、包名、versionCode 和签名，然后发起系统安装确认。首次需允许本应用安装更新；不承诺静默安装。后台下载任务和目标版本会持久化，重开 App 可恢复进度，链接过期可重试获取新链接。安装包来自蒲公英，由 cyeam_web 转发，APK 内没有 API Key。
 
 后端须先部署 `cyeam_web` 的 `/api/apps/` 接口，并配置服务端 `PGYER_API_KEY`。多 App 映射位于后端 `conf/app_updates.json`；本 App 的 id 是 `awesome-photo`、包名是 `com.awesomephoto`。可用 Gradle 参数 `-PappUpdateUrl=https://<服务域名>/api/apps/awesome-photo/update` 覆盖更新接口。蒲公英短链接已不再用于客户端解析版本。后端暂不提供 SHA-256（蒲公英元数据无此字段），客户端依赖 HTTPS、文件大小和 Android 签名/包名/版本校验；系统安装器会最终验证安装包。
+
+1.1.1 发布回归：CI 重新导出 ONNX 导致文件 SHA-256 与本地校准绑定不一致，旧客户端静默使用未校准公式。修复后固定下载已校准的模型文件，上传前检查校准报告，打包前运行目录与运行时校准匹配测试；不修改已发布的旧模型文件。更换权重需先完成校准和验证再更新目录。

@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: tools/requirements-model.txt
+          cache-dependency-path: tools/requirements-modelscope.txt
       - name: Validate release configuration
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
@@ -63,19 +63,17 @@ jobs:
           echo "ANDROID_KEYSTORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
-      - name: Export and validate Android model
+      - name: Fetch pinned calibrated Android models
         run: |
-          python -m pip install -r tools/requirements-model.txt
-          python -m pip install --no-deps -r tools/requirements-topiq.txt
-          python tools/export_android_model.py --download
-          python tools/export_aesthetic_model.py --download
-          python tools/export_topiq_model.py --download
+          python tools/prepare_release_models.py
       - name: Publish and verify ModelScope model downloads
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
         run: |
           python -m pip install -r tools/requirements-modelscope.txt
           python tools/publish_models_modelscope.py
+      - name: Verify packaged models match runtime calibration
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests com.awesomephoto.model.AestheticCalibrationTest
       - name: Build signed APK
         run: |
           VERSION_NAME="${VERSION#v}"

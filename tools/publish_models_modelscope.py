@@ -62,6 +62,8 @@ def main():
         raise ValueError('Model repository must be public for anonymous app downloads')
     output = ROOT / 'build/model-downloads'
     catalog = json.loads(package(f'{ENDPOINT}/models/{repo}', output))
+    from prepare_release_models import validate_calibrations
+    validate_calibrations(catalog, json.loads((ROOT / 'tools/aesthetic-calibration-report.json').read_text()))
     names = []
     for model in catalog['models']:
         filename = f"{model['id']}-{model['sha256']}.onnx"
