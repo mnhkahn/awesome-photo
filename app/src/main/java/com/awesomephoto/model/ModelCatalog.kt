@@ -3,7 +3,7 @@ package com.awesomephoto.model
 import android.content.Context
 import org.json.JSONObject
 
-/** Bundled metadata only. Weights live in immutable, checksummed release assets. */
+/** Bundled metadata only. Weights are downloaded separately and verified by content hash. */
 data class DownloadableModel(
     val id: String, val name: String, val role: String, val url: String,
     val sha256: String, val bytes: Long, val inputSize: Int,

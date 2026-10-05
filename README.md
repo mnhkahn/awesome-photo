@@ -28,7 +28,7 @@ python app.py
 
 ## Android App
 
-原生 Android 工程位于 `app/`，从已授权的系统相册按日期和最小尺寸筛选，以 4 张一批调用本地 NIMA 审美模型和 SegFormer 分割模型。模型按需下载到应用持久目录；下载完成后分析不联网、不上传照片、不调用 LLM。审美模型提供 NIMA MobileNet 和 TOPIQ-IAA ResNet50 两个选项，保存上次选择，切换不删除已下载模型。图片解码限制在最长边 2048 像素以内，批次结束释放位图；缓存命中时不加载模型。
+原生 Android 工程位于 `app/`，从已授权的系统相册按日期和最小尺寸筛选，以 4 张一批调用本地 NIMA 审美模型和 SegFormer 分割模型。模型按需下载到应用持久目录；下载完成后分析不联网、不上传照片、不调用 LLM。审美模型提供 NIMA MobileNet 和 TOPIQ-IAA ResNet50 两个选项，保存上次选择，切换不删除已下载模型。首次打开及切换模型时自动下载，没有单独的下载按钮；下载失败后，点击“开始分析”会重试并在准备完成后继续分析。图片解码限制在最长边 2048 像素以内，批次结束释放位图；缓存命中时不加载模型。
 
 照片预览会从原图读取拍摄时间和 GPS。Android 10 及以上需在预览中点击“允许读取照片位置”授权；授权后立即刷新，不必重新分析。地址由系统地理编码服务解析，服务不可用时显示经纬度；没有权限、原图读取失败和文件未记录 GPS 会分别提示。相册自行保存或云端补充的位置不一定写在照片文件中。
 
@@ -89,18 +89,20 @@ WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-controls ./gradlew :app:testDebugUnitTest 
 .venv312/bin/python tools/export_android_model.py --download
 .venv312/bin/python tools/export_aesthetic_model.py --download
 .venv312/bin/python tools/export_topiq_model.py --download
-.venv312/bin/python tools/package_models.py --base-url https://github.com/OWNER/REPO/releases/download/VERSION
+.venv312/bin/pip install -r tools/requirements-modelscope.txt
+# 先设置 MODELSCOPE_API_KEY 环境变量
+.venv312/bin/python tools/publish_models_modelscope.py
 ```
 
 然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
 
-已有本地权重时可省略 `--download`。发布流水线导出并验证模型，生成含下载地址、长度及 SHA-256 的目录，上传独立的模型 Release 附件，并检查 APK 没有混入权重。下载附件必须先公开，随后才向蒲公英发布 APK，避免首启下载 404。
+已有本地权重时可省略 `--download`。发布流水线导出并验证模型，生成含下载地址、长度及 SHA-256 的目录，上传到 ModelScope，逐个匿名下载并校验完整文件后才更新 APK 的模型目录，再检查 APK 没有混入权重。ModelScope 上传或验证失败会停止发布，保留原目录。GitHub Release 仍保留模型附件作为发布归档，APP 使用 ModelScope 地址。
 
 NIMA 原权重按上游 Apache-2.0 许可附带声明；TOPIQ/IQA-PyTorch 上游使用 PolyForm Noncommercial 许可，随包及下载附件附带许可全文。TOPIQ 是较大可选模型，约 264 MiB，固定单张推理以控制内存；没有手机实测前不承诺与轻量模型相同的速度。
 
 ## 发布到蒲公英
 
-推送版本 tag（例如 `git tag 0.1.7 && git push origin 0.1.7`）或手动运行 GitHub Actions 的 **Android Release Build** 并填写版本号。工作流会构建签名 APK、用 `git-chglog` 生成更新说明、先发布包含 APK、模型及许可证的 GitHub Release，再上传到蒲公英并轮询到发布完成。
+推送版本 tag（例如 `git tag 0.1.7 && git push origin 0.1.7`）或手动运行 GitHub Actions 的 **Android Release Build** 并填写版本号。工作流先上传并验证 ModelScope 模型，再构建签名 APK、用 `git-chglog` 生成更新说明、先发布包含 APK、模型及许可证的 GitHub Release，再上传到蒲公英并轮询到发布完成。
 
 在仓库 **Secrets** 配置：
 
@@ -109,7 +111,12 @@ NIMA 原权重按上游 Apache-2.0 许可附带声明；TOPIQ/IQA-PyTorch 上游
 - `RELEASE_KEY_ALIAS`
 - `RELEASE_KEY_PASSWORD`
 - `PGYER_API_KEY`
+- `MODELSCOPE_API_KEY`：有模型仓库上传权限的魔搭令牌，仅用于发布，不进入 APK
 - `LARK_RELEASE_WEBHOOK`：飞书群机器人 webhook；仅在蒲公英和 GitHub Release 均成功后发送通知
+
+模型托管在公开仓库 [mnhkahn/awesome-photo-models](https://modelscope.cn/models/mnhkahn/awesome-photo-models)。可在仓库 **Variables** 配置 `MODELSCOPE_MODEL_REPO` 覆盖默认仓库；本地发布使用同名环境变量。APP 通过 ModelScope 的公开 HTTPS 文件下载接口获取模型，不需要用户登录或令牌。
+
+发布脚本上传模型、许可证及模型说明，真实匿名下载全部模型并校验长度与 SHA-256，全部通过后才替换 APK 内的模型目录。上传失败不会覆盖应用原来的目录。带哈希的旧文件会保留供旧版 APP 使用；更换下载域名不会导致已下载的相同模型重新下载。
 
 可选：在仓库 **Variables** 配置 `APP_UPDATE_URL`，覆盖默认后端更新接口地址。蒲公英短链接在后端 `conf/app_updates.json` 管理；旧 `PGYER_SHORTCUT` 变量不再被新版打包流程使用。
 

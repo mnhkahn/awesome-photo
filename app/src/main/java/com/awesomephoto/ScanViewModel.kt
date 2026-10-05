@@ -55,6 +55,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val requestedMonths = mutableSetOf<String>()
     private val pendingMonthLoads = mutableSetOf<String>()
 
+    init {
+        if (!_state.value.modelsReady) downloadModels()
+    }
+
     fun selectModel(id: String) {
         if (_state.value.isScanning || _state.value.preparingModels) return
         models.select(id)
@@ -63,11 +67,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         downloadModels()
     }
 
-    fun downloadModels() {
+    private fun downloadModels(onReady: () -> Unit = {}) {
         if (_state.value.isScanning || _state.value.preparingModels) return
         val chosen = models.catalog.aesthetic(_state.value.settings.aestheticModelId)
         _state.value = _state.value.copy(preparingModels = true, error = null, modelProgress = "正在检查模型")
         viewModelScope.launch {
+            var prepared = false
             try {
                 var last = 0L
                 for (model in listOf(chosen, models.catalog.segmentation)) {
@@ -80,13 +85,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 _state.value = _state.value.copy(modelsReady = true, modelProgress = "模型已就绪，可离线分析")
+                prepared = true
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
                 _state.value = _state.value.copy(modelsReady = false, modelProgress = null,
-                    error = "模型准备失败：${error.message}。可重试，已下载完成的模型会保留。")
+                    error = "模型准备失败：${error.message}。恢复网络后点击开始分析会自动重试，已下载完成的模型会保留。")
             } finally {
                 _state.value = _state.value.copy(preparingModels = false, downloadedModels = models.downloadedIds())
             }
+            if (prepared) onReady()
         }
     }
 
@@ -130,7 +137,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun scan(dateStartMs: Long, dateEndMs: Long) {
         if (_state.value.isScanning || _state.value.preparingModels) return
-        if (!_state.value.modelsReady) { downloadModels(); return }
+        if (!_state.value.modelsReady) { downloadModels { scan(dateStartMs, dateEndMs) }; return }
         val snapshot = _state.value.copy(settings = _state.value.settings.copy(dateStartMs = dateStartMs, dateEndMs = dateEndMs))
         if (!snapshot.hasPhotoAccess) { _state.value = snapshot.copy(error = "请允许访问系统相册后再分析"); return }
         viewModelScope.launch {

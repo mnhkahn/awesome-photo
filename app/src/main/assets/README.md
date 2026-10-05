@@ -1,6 +1,6 @@
 # 按需下载的本地模型
 
-APK 只携带 models.json 与许可证。模型经下载校验后保存在应用 noBackupFilesDir/analysis-models，切换或重启不删除。
+APK 只携带 models.json 与许可证。首次打开或切换模型时自动下载，无需单独点击下载按钮。模型经下载校验后保存在应用 noBackupFilesDir/analysis-models，切换或重启不删除。
 
 - NIMA MobileNet：轻量审美，约 12.25 MiB。224×224 NCHW RGB [-1,1]，输出 [N,10] 分布。
 - TOPIQ-IAA ResNet50：可选审美，约 264 MiB。384×384 NCHW RGB [0,1]，输出 [1,10] 分布，单张运行。更大不代表必然更符合个人喜好。
@@ -11,3 +11,7 @@ NIMA 权重来自 idealo/image-quality-assessment，提交 dceaf7c2d218bc6e80b21
 TOPIQ 使用 pyiqa 0.1.13 的 ResNet50/AVA 架构及 cfanet_iaa_ava_res50-3cd62bb3.pth，SHA-256 3cd62bb33f9933ed7c6e3d5e79129e81c898eba78b7a2af516a0b0b974616975。导出固定 384 方形输入和单张批次，校验 ONNX 与 PyTorch 的概率分布。IQA-PyTorch Copyright (c) 2022 Chaofeng Chen，PolyForm Noncommercial 许可，见 TOPIQ-LICENSE.txt。
 
 导出／发布流程见仓库 README 和 tools/export_*model.py、tools/package_models.py。每次导出后生成独立附件；模型 ID、SHA-256 与预处理共同区分评分缓存。仅替换下载镜像而内容相同时会继续复用。
+
+发布时由 tools/publish_models_modelscope.py 上传到ModelScope 公开模型仓库 并验证公开下载，成功后才更新 models.json。当前目录是否已迁移以实际 URL 为准。
+
+SegFormer 上游使用 NVIDIA Source Code License for SegFormer，见 SEGFORMER-LICENSE.txt；上游模型卡链接及来源见 tools/modelscope-model-card.md。

@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 import java.util.Locale
 
 @Composable
-fun ModelSelectionPanel(state: ScanUiState, onSelect: (String) -> Unit, onDownload: () -> Unit) {
+fun ModelSelectionPanel(state: ScanUiState, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val selected = state.models.firstOrNull { it.id == state.settings.aestheticModelId }
     val busy = state.isScanning || state.preparingModels
@@ -35,12 +35,10 @@ fun ModelSelectionPanel(state: ScanUiState, onSelect: (String) -> Unit, onDownlo
             Text(String.format(Locale.ROOT, "物体识别：%s · %.1f MB · %s", it.name, it.sizeMiB,
                 if (it.id in state.downloadedModels) "已下载" else "未下载"), style = MaterialTheme.typography.bodySmall)
         }
-        Text("记住上次选择。模型仅首次下载，切换不删除已下载模型；下载后可离线分析，照片不上传。",
+        Text("记住上次选择。首次使用或切换模型时自动下载，已下载的模型会保留；下载后可离线分析，照片不上传。",
             style = MaterialTheme.typography.bodySmall)
         if (state.preparingModels) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        } else if (!state.modelsReady) {
-            Button(onClick = onDownload, enabled = !state.isScanning) { Text("下载所需模型 / 重试") }
         }
         state.modelProgress?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }

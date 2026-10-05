@@ -188,7 +188,7 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         Text("照片仅在本机评价美感、主体明确度和清晰度，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            ModelSelectionPanel(state, viewModel::selectModel, viewModel::downloadModels)
+            ModelSelectionPanel(state, viewModel::selectModel)
         }
         if (!state.hasPhotoAccess) item(span = { GridItemSpan(maxLineSpan) }) {
             Text("需要相册访问权限才能分析照片；若未授权，可在系统设置中开启本应用的照片访问权限。", style = MaterialTheme.typography.bodySmall)
@@ -213,7 +213,7 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && !state.preparingModels && state.modelsReady && state.hasPhotoAccess) { Text("开始分析") }
+            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && !state.preparingModels && state.hasPhotoAccess) { Text("开始分析") }
         }
         state.error?.let { message -> item(span = { GridItemSpan(maxLineSpan) }) { Text(message, color = MaterialTheme.colorScheme.error) } }
         if (state.isScanning) item(span = { GridItemSpan(maxLineSpan) }) { Progress(state.progress) }
