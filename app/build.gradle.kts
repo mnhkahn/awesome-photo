@@ -14,7 +14,7 @@ val appUpdateUrl = providers.gradleProperty("appUpdateUrl").orElse("https://www.
 // Content-based cache identity: stable across machines/builds, changes with analysis inputs.
 fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { "%02x".format(it) }
-val analysisSources = listOf("ModelCatalog.kt", "ModelDownloadStore.kt", "ModelRepository.kt", "WallpaperAssessment.kt", "AestheticAnalyzer.kt", "PhotoScorer.kt", "EdgeSharpness.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
+val analysisSources = listOf("ModelCatalog.kt", "ModelDownloadStore.kt", "ModelRepository.kt", "AestheticCalibration.kt", "WallpaperAssessment.kt", "AestheticAnalyzer.kt", "PhotoScorer.kt", "EdgeSharpness.kt", "PhotoCandidate.kt", "SegFormerAnalyzer.kt", "FolderScanner.kt")
 val analysisFingerprint = sha256((analysisSources.joinToString("\n") { name ->
     val source = layout.projectDirectory.file("src/main/java/com/awesomephoto/model/$name")
     "$name:${sha256(providers.fileContents(source).asBytes.get())}"

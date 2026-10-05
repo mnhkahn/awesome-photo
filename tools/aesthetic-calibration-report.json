@@ -1,0 +1,53 @@
+{
+  "version": "teacher-wallpaper-v1",
+  "profiles": [
+    {
+      "modelId": "nima-mobile",
+      "modelSha256": "b2c69d0e64cae27925c6d6918863b137bec3c89877f4c5276f77d2992baf1722",
+      "slope": 21.10104915678697,
+      "intercept": -35.624448783070505,
+      "trainCount": 46,
+      "validationCount": 11,
+      "trainingMeanRange": [
+        4.238897459958935,
+        5.857702770416836
+      ],
+      "validationMeanRange": [
+        4.478967799630482,
+        5.6050452933905035
+      ],
+      "rawValidationMae": 30.274194733542252,
+      "calibratedValidationMae": 7.051787824013409,
+      "constantValidationMae": 7.962450592885375,
+      "validationPairConcordance": 0.7727272727272727,
+      "validationPairCount": 44,
+      "candidateAccepted": true,
+      "note": "Single-teacher reference, one scene-group holdout; scale calibration preserves ranking and does not establish personal preference accuracy.",
+      "evidenceSha256": "3d84c98fef2aee35c17be6f7db21351f2a43aaff119f8c640c5724e3043d1191"
+    },
+    {
+      "modelId": "topiq-res50",
+      "modelSha256": "a3c8cd79dad650d17451a573997b88389462a0216bee7118af2ccf6eaf42135c",
+      "slope": 18.416471611023983,
+      "intercept": -25.420048078193922,
+      "trainCount": 46,
+      "validationCount": 11,
+      "trainingMeanRange": [
+        4.596408101730049,
+        6.713316016597673
+      ],
+      "validationMeanRange": [
+        4.6928797592408955,
+        5.776975461281836
+      ],
+      "rawValidationMae": 26.49235885439798,
+      "calibratedValidationMae": 6.85233994989909,
+      "constantValidationMae": 7.962450592885375,
+      "validationPairConcordance": 0.7045454545454546,
+      "validationPairCount": 44,
+      "candidateAccepted": true,
+      "note": "Single-teacher reference, one scene-group holdout; scale calibration preserves ranking and does not establish personal preference accuracy.",
+      "evidenceSha256": "96acfa183fbbc395dd41760ea06b4159598e95d20bf0a3975319ba42be5b5789"
+    }
+  ]
+}

@@ -5,14 +5,20 @@ import kotlin.math.abs
 
 /** Offline aesthetic prediction and an explicitly approximate subject-structure measure. */
 object WallpaperAssessment {
-    const val RULE_VERSION = "local-nima-wallpaper-v1"
+    const val RULE_VERSION = "local-wallpaper-teacher-scale-v2"
     val weights = linkedMapOf("画面美感" to 70.0, "主体明确度" to 20.0, "清晰度" to 10.0)
 
-    fun aesthetic(ratings: FloatArray, modelName: String = "NIMA MobileNet"): ScoreDetail {
+    fun aesthetic(ratings: FloatArray, modelName: String = "NIMA MobileNet", calibration: AestheticCalibration.Profile? = null): ScoreDetail {
         require(ratings.size == 10 && ratings.all { it.isFinite() && it in 0f..1f }) { "审美模型输出无效" }
         val sum = ratings.sum()
         require(abs(sum - 1f) < .001f) { "审美模型概率分布无效" }
-        val mean = ratings.indices.sumOf { (it + 1) * (ratings[it] / sum).toDouble() }
+        val mean = (ratings.indices.sumOf { (it + 1) * ratings[it].toDouble() } / ratings.sumOf { it.toDouble() }).coerceIn(1.0, 10.0)
+        if (calibration != null) {
+            val value = calibration.normalize(mean)
+            return ScoreDetail("画面美感", 70.0, value,
+                String.format(Locale.ROOT, "本地 %s 预测审美均值，经样例校准：参考分=%.6f×均值%+.6f，限定在 0–100 后乘以 70%%。系数由 46 张高分辨率照片的本次大模型视觉参考评分拟合，另留 11 张验证。仅校准分数尺度，不改变模型排序，也不是个人喜好的标准答案。", modelName, calibration.slope, calibration.intercept),
+                String.format(Locale.ROOT, "模型原始均值 %.2f/10，校准后的美感参考分 %.1f/100。手机仅执行本地推理与换算；参考评分有主观性，模型不理解你的个人回忆。", mean, value * 100))
+        }
         return ScoreDetail("画面美感", 70.0, ((mean - 1.0) / 9.0).toFloat().coerceIn(0f, 1f),
             "本地 $modelName 预测 1–10 分审美分布，均值按 (均值−1)÷9 映射为百分制；用于相对排序，不是及格率。",
             String.format(Locale.ROOT, "模型预测审美均值 %.2f/10。依据整张照片的学习特征评价整体观感；模型不能生成可信的逐项色彩、光影解释，也不理解你的个人回忆。", mean))

@@ -544,7 +544,7 @@ private fun ScoreExplanation(candidate: PhotoCandidate) {
     }
     if (expanded) {
         Text("模型参考分 ${candidate.score}/100 · 向下取整", fontWeight = FontWeight.SemiBold)
-        Text("本地审美模型占 70%，主体区域连贯性占 20%，清晰度占 10%。尚未按你的喜好校准，先作为排序参考，不代表及格率或个人回忆价值；不评价屏幕适配。", style = MaterialTheme.typography.bodySmall)
+        Text("本地审美模型占 70%，主体区域连贯性占 20%，清晰度占 10%。已支持用大模型视觉参考评分校准美感分数，实际口径见下方明细；仍是筛选参考，不代表个人回忆价值，不评价屏幕适配。", style = MaterialTheme.typography.bodySmall)
         if (candidate.scoreDetails.isEmpty()) {
             Text("此记录尚无评分明细，请重新分析照片。")
         }

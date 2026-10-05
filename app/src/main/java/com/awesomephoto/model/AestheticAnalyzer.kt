@@ -43,7 +43,8 @@ class AestheticAnalyzer(file: File, private val model: DownloadableModel) : Auto
                 @Suppress("UNCHECKED_CAST")
                 val ratings = output[0].value as Array<FloatArray>
                 check(ratings.size == bitmaps.size) { "审美模型返回数量错误" }
-                return ratings.map { WallpaperAssessment.aesthetic(it, model.name) }
+                val calibration = AestheticCalibration.forModel(model.id, model.sha256)
+                return ratings.map { WallpaperAssessment.aesthetic(it, model.name, calibration) }
             }
         }
     }

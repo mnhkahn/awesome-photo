@@ -42,7 +42,7 @@ Android 打包时计算评分代码指纹；缓存键另含所选审美模型和
 
 初版总分 = 美感 70% + 主体明确度（视觉结构近似）20% + 清晰度 10%，最终向下取整。权重是产品初始选择，未经过用户偏好数据校准。默认显示全部结果并按分数排序，提供 80+、70–79、60–69、60 以下筛选。分数是相对筛选依据，不是考试及格率，不能与此前人工评图的 89 分或旧版分数直接比较。
 
-- **画面美感**：按选择使用 [NIMA MobileNet](https://github.com/idealo/image-quality-assessment)（224×224，RGB [-1,1]）或 [TOPIQ-IAA ResNet50](https://github.com/chaofengc/IQA-PyTorch)（384×384，RGB [0,1]，模型内标准化）。二者预测 1–10 分概率分布；均值按 `(均值−1)/9` 线性映射为百分制。不人为抬分，也不虚构光影、色彩等文字解释。
+- **画面美感**：按选择使用 [NIMA MobileNet](https://github.com/idealo/image-quality-assessment)（224×224，RGB [-1,1]）或 [TOPIQ-IAA ResNet50](https://github.com/chaofengc/IQA-PyTorch)（384×384，RGB [0,1]，模型内标准化）。二者预测 1–10 分概率分布；已验证权重使用各自的视觉参考校准系数映射到 0–100，再按 70% 计入总分：NIMA 为 `21.101049 × 均值 − 35.624449`，TOPIQ 为 `18.416472 × 均值 − 25.420048`，结果限制在 0–100。未知权重 SHA-256 回退原始 `(均值−1)/9` 口径并在明细显示实际公式。APP 不调用大模型，不虚构逐张光影、色彩解释。
 - **主体明确度**：用分割图的区域集中连贯性作弱近似。按同标签四邻域找连通区域，忽略小于全图 0.1%（至少 2 像素）的碎片，最大三个区域面积除以全部有效区域面积。任何题材使用同一公式，不依赖类别是否为“其他”。区域不足时按中性 50% 并明确提示。大背景也可能得到高分，此项不能理解主体关系或故事，不能代替人工主题判断。
 - **清晰度**：最长边 1024 像素，轻度降噪后测有效边缘的局部陡峭程度。边缘指标达到 70% 得满分；人物边缘充足时人物占 70%、全图占 30%。平坦区域不计入边缘平均；不足 12 个边缘时用中性 50% 并提示证据不足。70% 是经验线，未针对具体屏幕或观看距离校准。
 
@@ -58,6 +58,25 @@ WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-samples ./gradlew :app:testDebugUnitTest
 ```
 
 该脚本运行真实 ONNX 模型，随后将分割、亮度和审美输出送入 Kotlin 生产评分公式。桌面图像解码与 Android 可能有细微差异，桌面耗时不能视为手机耗时。没有设备实测前不承诺手机吞吐量。
+
+### 大模型视觉参考校准（初版）
+
+2026-10-05 从用户授权的下载目录筛出 57 张不重复的高分辨率照片，要求短边 ≥2000 像素、总像素 ≥600 万，实际最低约 675 万像素。由本次对话助手看图提供 0–100 的**美感单项**参考评分与理由；不让用户提前标好坏，不评价手机/桌面适配，也不推断个人回忆。57 张的参考评分包含旅行、人像、建筑、艺术和日常记录。
+
+先固定评分、场景分组和划分，再运行两个本地 ONNX 模型。46 张训练图拟合每个模型独立的线性系数，11 张相互独立场景的验证图不参与拟合；同一场景、近似画面不跨训练和验证。验证美感百分制 MAE：NIMA 30.27 → 7.05，TOPIQ 26.49 → 6.85；训练均值常数基线 MAE 为 7.96。参考差距 ≥5 分的 44 对验证照片，模型排序一致率分别为 77.3% 和 70.5%，正向线性校准不会改变这些排序。
+
+这是单次助手视觉参考，并非独立人工标准答案；主要使用联系表检查整体观感，数据偏向此目录的旅行照片。只有 11 张验证图，低分照片在验证集覆盖不足，未知类型与极端质量的泛化未得到充分验证。不能把数字分布扩大解释成审美识别能力提升。70/20/10 的总分权重未在此轮调整，个人偏好仍未验证。
+
+汇总证据与系数在 `tools/aesthetic-calibration-report.json`；私有照片路径、逐张参考评分和原始预测保存在忽略 Git 的 `.cache/teacher-calibration/`，未上传到模型仓库。Android 系数由 `AestheticCalibration.kt` 按模型 ID 和权重 SHA-256 绑定；该文件参与分析指纹，规则升级后下一次分析会自动重算旧评分，模型文件继续保留。
+
+复现实验（使用已有参考标签，不调用云端 API）：
+
+```bash
+.venv312/bin/python tools/predict_calibration_samples.py --labels .cache/teacher-calibration/teacher-labels.json --output .cache/teacher-calibration/recheck
+.venv312/bin/python tools/fit_aesthetic_calibration.py .cache/teacher-calibration/recheck/nima-mobile-predictions.json .cache/teacher-calibration/recheck/topiq-res50-predictions.json --output .cache/teacher-calibration/recheck/report.json
+```
+
+拟合工具只输出候选报告，不自动覆盖 Android 系数。新增样本时应保持独立验证集，不反复按照验证误差挑选参数。
 
 ### 个人偏好验证（尚未校准）
 

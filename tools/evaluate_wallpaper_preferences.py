@@ -94,6 +94,7 @@ def main():
     # New directory prevents accidentally mixing samples from another run.
     args.output.mkdir(parents=True, exist_ok=False)
     samples = args.output / 'samples'
+    sample_report = []
     # Process in modest chunks to avoid OS command-length limits; renumber samples globally.
     for offset in range(0, len(rows), 20):
         chunk = rows[offset:offset+20]
@@ -102,8 +103,12 @@ def main():
                         '--output', str(destination), '--runs', '0',
                         *[r['path'] for r in chunk]], check=True, cwd=ROOT)
         samples.mkdir(exist_ok=True)
+        batch_report = json.loads((destination/'report.json').read_text())
         for i, row in enumerate(chunk):
             (destination/f'{i}.bin').replace(samples/f'{row["id"]}.bin')
+            metadata = next(item for item in batch_report if item['id'] == i)
+            sample_report.append({**metadata, 'id': int(row['id'])})
+    (samples/'report.json').write_text(json.dumps(sample_report, ensure_ascii=False, indent=2))
     import os
     env = dict(os.environ, WALLPAPER_TEST_SAMPLES=str(samples.resolve()))
     subprocess.run(['./gradlew', ':app:testDebugUnitTest', '--rerun-tasks', '--console=plain'],
