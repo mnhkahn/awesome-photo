@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
@@ -74,6 +76,9 @@ android {
 }
 
 dependencies {
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation(libs.androidx.core.ktx)

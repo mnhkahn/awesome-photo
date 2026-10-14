@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "371968411873",
+    "project_id": "homework-70b75",
+    "storage_bucket": "homework-70b75.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371968411873:android:d76efed3c72e0cee018fa0",
+        "android_client_info": {
+          "package_name": "com.awesomephoto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCczowxN6rFgme_wbm9zeRuy3GnyHymyQM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371968411873:android:675c7607e2c6a43d018fa0",
+        "android_client_info": {
+          "package_name": "com.cprint.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCczowxN6rFgme_wbm9zeRuy3GnyHymyQM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371968411873:android:69e09922bccbe489018fa0",
+        "android_client_info": {
+          "package_name": "com.homeworkbuddy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCczowxN6rFgme_wbm9zeRuy3GnyHymyQM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -38,6 +38,20 @@ Android 打包时计算评分代码指纹；缓存键另含所选审美模型和
 
 模型目录为 `noBackupFilesDir/analysis-models`，不使用临时缓存，不随切换删除，也不进入系统备份。下载使用 HTTPS、长度和 SHA-256 校验，通过后原子保存；失败只清理未完成文件，可重试。重启后保留所选模型和已完成的下载。APK 仅包含 `models.json` 和许可证，不含 `.onnx`；清理应用缓存不会移除已下载模型。首次使用需要下载所选审美模型和 SegFormer，后续离线使用。
 
+### Firebase 统计与崩溃报告
+
+Android 应用 `com.awesomephoto` 已配置 Firebase 项目 `homework-70b75`，配置文件为 `app/google-services.json`。已接入 Analytics 基础事件自动采集和 Crashlytics Java/Kotlin 崩溃报告，未接入 FCM 推送。照片分析仍在本地运行，本次未增加照片、GPS 或评分结果的业务上报。
+
+Firebase BoM 固定为 `34.0.0`，兼容当前 Kotlin `2.0.21`。升级 SDK 时需要同时核对 Kotlin 元数据兼容性。Google Services 和 Crashlytics Gradle 插件负责配置生成，SDK 通过 `FirebaseInitProvider` 自动初始化。
+
+安装并联网运行后，可在 Firebase Analytics 的 DebugView 验证基础事件：
+
+```bash
+adb shell setprop debug.firebase.analytics.app com.awesomephoto
+```
+
+验证完后执行 `adb shell setprop debug.firebase.analytics.app .none.` 关闭调试模式。Crashlytics 的云端验证需要受控测试崩溃并重启应用，当前未添加主动崩溃入口。构建通过不代表云端已收到数据。
+
 ### Android 本地壁纸评分
 
 初版总分 = 美感 70% + 主体明确度（视觉结构近似）20% + 清晰度 10%，最终向下取整。权重是产品初始选择，未经过用户偏好数据校准。默认显示全部结果并按分数排序，提供 80+、70–79、60–69、60 以下筛选。分数是相对筛选依据，不是考试及格率，不能与此前人工评图的 89 分或旧版分数直接比较。
