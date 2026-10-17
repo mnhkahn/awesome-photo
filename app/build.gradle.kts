@@ -76,6 +76,11 @@ android {
 }
 
 dependencies {
+    constraints {
+        implementation(libs.androidx.fragment) {
+            because("Firebase transitively brings in Fragment 1.1.0; Activity Result APIs require 1.3.0 or newer")
+        }
+    }
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
