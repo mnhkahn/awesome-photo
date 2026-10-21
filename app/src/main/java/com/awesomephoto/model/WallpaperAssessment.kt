@@ -5,7 +5,7 @@ import kotlin.math.abs
 
 /** Offline aesthetic prediction and an explicitly approximate subject-structure measure. */
 object WallpaperAssessment {
-    const val RULE_VERSION = "local-wallpaper-teacher-scale-v2"
+    const val RULE_VERSION = "local-wallpaper-local-focus-v3"
     val weights = linkedMapOf("画面美感" to 70.0, "主体明确度" to 20.0, "清晰度" to 10.0)
 
     fun aesthetic(ratings: FloatArray, modelName: String = "NIMA MobileNet", calibration: AestheticCalibration.Profile? = null): ScoreDetail {

@@ -26,6 +26,32 @@ class ClarityScoreTest {
         assertTrue(result.details.single().reason.contains("证据不足"))
     }
 
+    @Test fun sharpBackgroundCannotOverrideReliableSoftPersonRegion() {
+        val w = 288; val h = 384
+        val sharp = FloatArray(w * h) { if (it % w < w / 2) .2f else .8f }
+        val soft = FloatArray(sharp.size) { i ->
+            (-4..4).sumOf { d -> sharp[(i / w) * w + (i % w + d).coerceIn(0, w - 1)].toDouble() }.toFloat() / 9
+        }
+        val luma = FloatArray(sharp.size) { if (it / w < h / 2) sharp[it] else soft[it] }
+        val labels = IntArray(sharp.size) { if (it / w > h / 2 + 16) 12 else 0 }
+        val detail = PhotoScorer.scoreSample(luma, w, h, PhotoScorer.SemanticStats(labels, w, h)).details.single()
+        assertTrue(detail.value < .7f)
+        assertTrue(detail.reason.contains("按人物区域计分"))
+    }
+
+    @Test fun suppliedShallowDepthOfFieldAndBlurControlWhenProvided() {
+        val folder = System.getenv("DEPTH_OF_FIELD_TEST_SAMPLES")
+        org.junit.Assume.assumeTrue(!folder.isNullOrBlank())
+        fun clarity(index: Int): Float = java.io.DataInputStream(java.io.File(folder, "$index.bin").inputStream().buffered()).use { input ->
+            val w = input.readInt(); val h = input.readInt(); val sw = input.readInt(); val sh = input.readInt()
+            val luma = FloatArray(w * h) { input.readFloat() }
+            val labels = IntArray(sw * sh) { input.readInt() }
+            PhotoScorer.scoreSample(luma, w, h, PhotoScorer.SemanticStats(labels, sw, sh)).details.single().value
+        }
+        assertEquals(1f, clarity(0), 0f)
+        assertTrue(clarity(1) < .7f)
+    }
+
     @Test fun suppliedPhotosWhenProvided() {
         val folder = System.getenv("CLARITY_TEST_SAMPLES")
         org.junit.Assume.assumeTrue(!folder.isNullOrBlank())

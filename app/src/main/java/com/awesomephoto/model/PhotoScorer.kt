@@ -59,7 +59,7 @@ object PhotoScorer {
     }
 
     internal fun scoreSample(sharpLuma: FloatArray, width: Int, height: Int, semantics: SemanticStats): Result {
-        val edges = EdgeSharpness.measure(sharpLuma, width, height)
+        val edges = EdgeSharpness.measure(sharpLuma, width, height, findFocus = true)
         val personEdges = if (semantics.hasPerson) {
             val mask = BooleanArray(sharpLuma.size) { i ->
                 val x = (i % width) * semantics.width / width
@@ -68,17 +68,21 @@ object PhotoScorer {
             }
             EdgeSharpness.measure(sharpLuma, width, height, mask)
         } else null
-        val sharpness = if (personEdges?.reliable == true) .7f * personEdges.value + .3f * edges.value else edges.value
+        val focus = edges.focus?.takeIf { it.value > edges.value }
+        val sharpness = if (personEdges?.reliable == true) personEdges.value else focus?.value ?: edges.value
         val sharpReason = if (!edges.reliable) {
             "仅找到 ${edges.edges} 个有效边缘，证据不足，暂按中性 50% 计分，不据此判断模糊。"
         } else {
-            "在 ${width}×${height} 样本中检测到 ${edges.edges} 个有效边缘，全图边缘指标 ${percent(edges.steepness ?: 0f)}，${if (edges.value >= 1f) "达到壁纸清晰度要求" else "未达到壁纸清晰度达标线"}。" +
-                if (personEdges?.reliable == true) "人物区域 ${personEdges.edges} 个边缘，边缘指标 ${percent(personEdges.steepness ?: 0f)}，${if (personEdges.value >= 1f) "达到壁纸清晰度要求" else "未达到壁纸清晰度达标线"}；人物占 70%、全图占 30%。"
-                else "人物区域未提供足够有效边缘，使用全图结果。"
+            "在 ${width}×${height} 样本中检测到 ${edges.edges} 个有效边缘，全图边缘指标 ${percent(edges.steepness ?: 0f)}。" +
+                when {
+                    personEdges?.reliable == true -> "人物区域 ${personEdges.edges} 个有效边缘，边缘指标 ${percent(personEdges.steepness ?: 0f)}，按人物区域计分，避免背景虚化拉低结果。"
+                    focus != null -> "检测到局部清晰区域，有 ${focus.edges} 个有效边缘，边缘指标 ${percent(focus.steepness)}，按该区域计分；仅证明存在局部清晰细节，不能确认主体是否合焦，也不能据此确认大光圈。"
+                    else -> "没有找到更清晰且边缘充足的局部区域，采用全图结果；无法区分背景虚化与主体失焦。"
+                } + if (sharpness >= 1f) "所用区域达到清晰度参考线。" else "所用区域未达到清晰度参考线。"
         }
         val details = listOf(
             ScoreDetail("清晰度", 100.0, sharpness,
-                "评价壁纸素材清晰度：最长边 1024 像素，边缘指标达到 ${percent(EdgeSharpness.WALLPAPER_THRESHOLD)} 即满分，低于达标线按比例计分；人物边缘充足时人物占 70%、全图占 30%。纯色、低纹理和虚化背景不直接扣分，此项不评价美感。",
+                "评价壁纸素材清晰度：最长边 1024 像素，边缘指标达到 ${percent(EdgeSharpness.WALLPAPER_THRESHOLD)} 即满分，低于参考线按比例计分。人物边缘充足时按人物区域；否则在全图与边缘充足的局部窗口中采用更清晰者。局部窗口边长为短边的 1/6（48–192 像素），半窗重叠，至少 64 个且占全图 2% 的有效边缘。降低浅景深背景的影响，但不能保证测到的就是主体；不评价美感。",
                 sharpReason)
         )
         return Result(details)

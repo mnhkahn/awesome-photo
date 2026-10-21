@@ -54,6 +54,27 @@ class EdgeSharpnessTest {
         val mask = BooleanArray(w * h) { it / w > 72 }
         assertTrue(EdgeSharpness.measure(mixed, w, h, mask).value < .6f)
     }
+    @Test fun localFocusPreservesShallowDepthOfFieldButNotUniformBlur() {
+        val w = 288; val h = 384
+        val sharp = step(w, h)
+        val soft = blur(sharp, w, h, 4)
+        val mixed = FloatArray(w * h) { if (it / w in 160..239) sharp[it] else soft[it] }
+        val result = EdgeSharpness.measure(mixed, w, h, findFocus = true)
+        assertTrue(result.value < .7f)
+        assertEquals(1f, result.focus!!.value, 0f)
+        val blurred = EdgeSharpness.measure(blur(mixed, w, h, 4), w, h, findFocus = true)
+        assertTrue(blurred.value < 1f)
+        assertTrue(blurred.focus == null || blurred.focus.value < 1f)
+    }
+
+    @Test fun aTinySharpSpeckCannotQualifyAsLocalFocus() {
+        val w = 288; val h = 384
+        val soft = blur(step(w, h), w, h, 4)
+        for (y in 180..187) for (x in 100..107) soft[y * w + x] = .9f
+        val result = EdgeSharpness.measure(soft, w, h, findFocus = true)
+        assertTrue(result.focus == null || result.focus.value < 1f)
+    }
+
     @Test fun suppliedPhotoAndBlurredControlsWhenProvided() {
         val path = System.getenv("SHARPNESS_TEST_LUMA")
         org.junit.Assume.assumeTrue(!path.isNullOrBlank())
