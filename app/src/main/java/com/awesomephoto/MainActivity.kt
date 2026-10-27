@@ -231,7 +231,10 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
                 FilterGroup(Orientation.entries, orientation, Orientation.ALL, { it.label }, { orientationCounts.getValue(it) }) { orientation = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text("导出当前筛选结果 (${visible.size})") }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text("导出当前筛选结果 (${visible.size})") }
+                    WallpaperApplyButton(visible)
+                }
             }
             if (visible.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 Text("当前条件下没有照片，请选择“全部”放宽筛选条件，或调整日期范围。", style = MaterialTheme.typography.bodyMedium)

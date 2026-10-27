@@ -1,0 +1,4 @@
+<resources>
+    <string name="photo_wallpaper_name">精选照片轮播</string>
+    <string name="photo_wallpaper_description">将选中的本机照片按设置的间隔轮播为壁纸</string>
+</resources>
