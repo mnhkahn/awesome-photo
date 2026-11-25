@@ -76,7 +76,7 @@ adb shell setprop debug.firebase.analytics.app com.awesomephoto
 
 ```bash
 .venv312/bin/python tools/benchmark_local_scoring.py --output /tmp/wallpaper-samples /path/photo1.jpg /path/photo2.jpg
-WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-samples ./gradlew :app:testDebugUnitTest
+WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-samples ./gradlew :app:testSideloadDebugUnitTest
 ```
 
 该脚本运行真实 ONNX 模型，随后将分割、亮度和审美输出送入 Kotlin 生产评分公式。桌面图像解码与 Android 可能有细微差异，桌面耗时不能视为手机耗时。没有设备实测前不承诺手机吞吐量。
@@ -116,7 +116,7 @@ WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-samples ./gradlew :app:testDebugUnitTest
 
 ```bash
 .venv312/bin/python tools/benchmark_local_scoring.py --output /tmp/wallpaper-controls --runs 0 --controls /path/photo1.jpg
-WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-controls ./gradlew :app:testDebugUnitTest --rerun-tasks
+WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-controls ./gradlew :app:testSideloadDebugUnitTest --rerun-tasks
 .venv312/bin/python tools/check_control_scores.py /tmp/wallpaper-controls/report.json
 ```
 
@@ -135,7 +135,7 @@ WALLPAPER_TEST_SAMPLES=/tmp/wallpaper-controls ./gradlew :app:testDebugUnitTest 
 .venv312/bin/python tools/publish_models_modelscope.py
 ```
 
-然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
+然后用 Android Studio 打开本仓库，或运行 `./gradlew :app:assembleSideloadDebug`。模型二进制故意不提交 Git，避免仓库被 10MB+ 的派生权重占用。
 
 已有本地权重时可省略 `--download`。发布流水线使用 `tools/prepare_release_models.py` 获取已提交目录中指定的同一份 ONNX 文件并验证 SHA-256，不在 CI 重新导出，随后生成含下载地址、长度及 SHA-256 的目录，上传到 ModelScope，逐个匿名下载并校验完整文件后才更新 APK 的模型目录，再检查 APK 没有混入权重。ModelScope 上传或验证失败会停止发布，保留原目录。GitHub Release 仍保留模型附件作为发布归档，APP 使用 ModelScope 地址。
 
@@ -166,3 +166,17 @@ App 启动时访问 `https://www.cyeam.com/api/apps/awesome-photo/update?version
 后端须先部署 `cyeam_web` 的 `/api/apps/` 接口，并配置服务端 `PGYER_API_KEY`。多 App 映射位于后端 `conf/app_updates.json`；本 App 的 id 是 `awesome-photo`、包名是 `com.awesomephoto`。可用 Gradle 参数 `-PappUpdateUrl=https://<服务域名>/api/apps/awesome-photo/update` 覆盖更新接口。蒲公英短链接已不再用于客户端解析版本。后端暂不提供 SHA-256（蒲公英元数据无此字段），客户端依赖 HTTPS、文件大小和 Android 签名/包名/版本校验；系统安装器会最终验证安装包。
 
 1.1.1 发布回归：CI 重新导出 ONNX 导致文件 SHA-256 与本地校准绑定不一致，旧客户端静默使用未校准公式。修复后固定下载已校准的模型文件，上传前检查校准报告，打包前运行目录与运行时校准匹配测试；不修改已发布的旧模型文件。更换权重需先完成校准和验证再更新目录。
+
+### Google Play 封测构建
+
+应用包名为 `com.awesomephoto`，目标 Android 16（API 36）。Play 的发行包使用 `playRelease`，蒲公英和 GitHub 使用 `sideloadRelease`。Play 版通过 Google Play 更新，并在应用主界面提供隐私政策链接。
+
+界面支持简体中文和英文，默认跟随 Android 系统语言，其他语言回退到英文。Android 13 及以上可在系统的应用语言设置中单独选择。Play AAB 同时包含两套语言资源。
+
+用已登记的 Play 上传密钥设置 `PLAY_UPLOAD_KEYSTORE_FILE`、`PLAY_UPLOAD_KEYSTORE_PASSWORD`、`PLAY_UPLOAD_KEY_ALIAS` 和 `PLAY_UPLOAD_KEY_PASSWORD`。以 Play Console 中未使用且递增的版本号构建：
+
+```bash
+./gradlew :app:bundlePlayRelease -PreleaseVersionName=1.2.4 -PreleaseVersionCode=26
+```
+
+产物在 `app/build/outputs/bundle/playRelease/`。上传前用 `jarsigner -verify` 验证签名。商品详情文案与政策核对项放在 [deploy/google-play](deploy/google-play/)。

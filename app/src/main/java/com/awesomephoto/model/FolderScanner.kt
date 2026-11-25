@@ -1,5 +1,6 @@
 package com.awesomephoto.model
 
+import com.awesomephoto.R
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -25,10 +26,10 @@ class FolderScanner(private val context: Context) {
         val chosen = models.catalog.aesthetic(settings.aestheticModelId)
         val segmenter = models.catalog.segmentation
         val cache = AnalysisCache(context, chosen.cacheIdentity + ":" + segmenter.cacheIdentity)
-        report(ScanProgress(0, 0, "正在查找所选日期的图片", ScanStage.DISCOVERING))
+        report(ScanProgress(0, 0, "", ScanStage.DISCOVERING))
         val files = collectImageFiles(settings, report)
         val prefiltered = mutableListOf<PendingPhoto>()
-        report(ScanProgress(0, files.size, "正在检查图片尺寸", ScanStage.CHECKING_SIZE))
+        report(ScanProgress(0, files.size, "", ScanStage.CHECKING_SIZE))
         files.forEachIndexed { index, file ->
             val dateMs = file.modifiedAt
             if (dateMs >= (settings.dateStartMs ?: Long.MIN_VALUE) && dateMs <= (settings.dateEndMs ?: Long.MAX_VALUE)) {
@@ -100,7 +101,7 @@ class FolderScanner(private val context: Context) {
             val size = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val modified = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
             while (cursor.moveToNext() && (settings.scanLimit <= 0 || result.size < settings.scanLimit)) {
-                result += MediaPhoto(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(id)), cursor.getString(name) ?: "未命名图片", cursor.getLong(size), cursor.getLong(modified) * 1000)
+                result += MediaPhoto(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(id)), cursor.getString(name) ?: context.getString(R.string.unnamed_photo), cursor.getLong(size), cursor.getLong(modified) * 1000)
             }
         }
         report(ScanProgress(result.size, result.size, "", ScanStage.DISCOVERING))

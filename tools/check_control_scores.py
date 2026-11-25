@@ -15,7 +15,7 @@ def main():
     parser.add_argument('report',type=Path)
     args=parser.parse_args()
     cases=json.loads(args.report.read_text())
-    xml=ET.parse(ROOT/'app/build/test-results/testDebugUnitTest/TEST-com.awesomephoto.model.LocalWallpaperSamplesTest.xml')
+    xml=ET.parse(ROOT/'app/build/test-results/testSideloadDebugUnitTest/TEST-com.awesomephoto.model.LocalWallpaperSamplesTest.xml')
     output=xml.getroot().findtext('system-out','')
     scores={int(i):float(s) for i,s in re.findall(r'AUDIT_SCORE (\d+) ([0-9.]+)',output)}
     if set(scores) != {row['id'] for row in cases}:

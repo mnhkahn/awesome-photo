@@ -35,7 +35,10 @@ class AnalysisCache(context: Context, modelIdentity: String) : SQLiteOpenHelper(
                 val rows = JSONArray(cursor.getString(3))
                 List(rows.length()) { index ->
                     val row = rows.getJSONObject(index)
-                    ScoreDetail(row.getString("name"), row.getDouble("weight"), row.getDouble("value").toFloat(), row.getString("policy"), row.getString("reason"))
+                    val english = row.optJSONObject("english")?.let {
+                        ScoreCopy(it.getString("name"), it.getString("policy"), it.getString("reason"))
+                    }
+                    ScoreDetail(row.getString("name"), row.getDouble("weight"), row.getDouble("value").toFloat(), row.getString("policy"), row.getString("reason"), english)
                 }.also { require(WallpaperAssessment.valid(it)) }
             }.getOrNull() ?: return null
             val labels = cursor.getString(2).takeIf(String::isNotEmpty)?.split('\u001f') ?: emptyList()
@@ -48,7 +51,10 @@ class AnalysisCache(context: Context, modelIdentity: String) : SQLiteOpenHelper(
         val details = JSONArray()
         candidate.scoreDetails.forEach { detail ->
             details.put(JSONObject().put("name", detail.name).put("weight", detail.weight)
-                .put("value", detail.value).put("policy", detail.policy).put("reason", detail.reason))
+                .put("value", detail.value).put("policy", detail.policy).put("reason", detail.reason)
+                .put("english", detail.english?.let {
+                    JSONObject().put("name", it.name).put("policy", it.policy).put("reason", it.reason)
+                }))
         }
         writableDatabase.execSQL(
             "INSERT OR REPLACE INTO analysis_cache (algorithm_version, source_uri, byte_size, modified_at, score, kind, labels, details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

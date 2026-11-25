@@ -1,5 +1,7 @@
 package com.awesomephoto.model
 
+import com.awesomephoto.LocalizedFailure
+import com.awesomephoto.R
 import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -15,14 +17,14 @@ class ModelDownloadStore(private val directory: File) {
         val destination = File(directory, model.fileName)
         if (has(model) && digest(destination, cancelled) == model.sha256) return destination
         directory.listFiles { file -> file.name.startsWith(model.id + "-") && file.name.endsWith(".part") }?.forEach { it.delete() }
-        check(directory.usableSpace >= model.bytes + 1024 * 1024) { "存储空间不足，无法下载模型" }
+        if (directory.usableSpace < model.bytes + 1024 * 1024) throw LocalizedFailure(R.string.model_insufficient_storage)
         val temporary = File.createTempFile(model.id + "-", ".part", directory)
         try {
             var url = URL(model.url)
             var redirects = 0
             while (true) {
                 cancelled()
-                check(url.protocol == "https") { "模型下载必须使用 HTTPS" }
+                if (url.protocol != "https") throw LocalizedFailure(R.string.model_requires_https)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.connectTimeout = 15000
                 connection.readTimeout = 20000
@@ -31,17 +33,17 @@ class ModelDownloadStore(private val directory: File) {
                 try {
                     val status = connection.responseCode
                     if (status in listOf(301, 302, 303, 307, 308)) {
-                        check(++redirects <= 5) { "模型下载重定向过多" }
-                        url = URL(url, connection.getHeaderField("Location") ?: error("模型下载地址无效"))
+                        if (++redirects > 5) throw LocalizedFailure(R.string.model_redirect_limit)
+                        url = URL(url, connection.getHeaderField("Location") ?: throw LocalizedFailure(R.string.model_invalid_url))
                         continue
                     }
-                    check(status == 200) { "模型下载失败（HTTP $status），请稍后重试" }
+                    if (status != 200) throw LocalizedFailure(R.string.model_http_failed, status)
                     connection.inputStream.use { input -> verifyAndWrite(input, temporary, model, cancelled, progress) }
                     break
                 } finally { connection.disconnect() }
             }
             cancelled()
-            check(temporary.renameTo(destination)) { "无法保存模型，请检查存储空间" }
+            if (!temporary.renameTo(destination)) throw LocalizedFailure(R.string.model_save_failed)
             return destination
         } finally { temporary.delete() }
     }
@@ -57,13 +59,13 @@ class ModelDownloadStore(private val directory: File) {
                 val count = input.read(buffer)
                 if (count < 0) break
                 received += count
-                check(received <= model.bytes) { "模型文件长度不符" }
+                if (received > model.bytes) throw LocalizedFailure(R.string.model_size_mismatch)
                 hash.update(buffer, 0, count); output.write(buffer, 0, count)
                 progress(received, model.bytes)
             }
             output.fd.sync()
         }
-        check(received == model.bytes && hex(hash.digest()) == model.sha256) { "模型校验失败，请重新下载" }
+        if (received != model.bytes || hex(hash.digest()) != model.sha256) throw LocalizedFailure(R.string.model_verification_failed)
     }
 
     private fun digest(file: File, cancelled: () -> Unit): String {

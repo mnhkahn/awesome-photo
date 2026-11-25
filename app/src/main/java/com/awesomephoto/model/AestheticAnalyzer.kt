@@ -1,6 +1,8 @@
 package com.awesomephoto.model
 
 import android.graphics.Bitmap
+import com.awesomephoto.LocalizedFailure
+import com.awesomephoto.R
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -42,10 +44,9 @@ class AestheticAnalyzer(file: File, private val model: DownloadableModel) : Auto
             session.run(mapOf("rgb" to tensor)).use { output ->
                 @Suppress("UNCHECKED_CAST")
                 val ratings = output[0].value as Array<FloatArray>
-                check(ratings.size == bitmaps.size) { "审美模型返回数量错误" }
-                val calibration = checkNotNull(AestheticCalibration.forModel(model.id, model.sha256)) {
-                    "当前模型与评分校准版本不匹配，请更新应用；本次不生成未校准评分"
-                }
+                if (ratings.size != bitmaps.size) throw LocalizedFailure(R.string.model_bad_output)
+                val calibration = AestheticCalibration.forModel(model.id, model.sha256)
+                    ?: throw LocalizedFailure(R.string.model_calibration_mismatch)
                 return ratings.map { WallpaperAssessment.aesthetic(it, model.name, calibration) }
             }
         }

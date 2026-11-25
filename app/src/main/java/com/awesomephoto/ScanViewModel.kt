@@ -2,6 +2,7 @@ package com.awesomephoto
 
 import android.app.Application
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,7 +27,7 @@ data class ScanUiState(
     val downloadedModels: Set<String> = emptySet(),
     val preparingModels: Boolean = false,
     val modelsReady: Boolean = false,
-    val modelProgress: String? = null,
+    val modelProgress: ModelProgress? = null,
     val hasPhotoAccess: Boolean = false,
     val settings: ScanSettings = ScanSettings(),
     val isScanning: Boolean = false,
@@ -35,8 +36,12 @@ data class ScanUiState(
     val lastScan: ScanSummary? = null,
     val dailyPhotoCounts: List<PhotoDateIndex.DayCount> = emptyList(),
     val isDateIndexing: Boolean = false,
-    val error: String? = null
+    val error: ScanMessage? = null
 )
+
+data class ModelProgress(val model: DownloadableModel, val percent: Long)
+
+class ScanMessage(@StringRes val resId: Int, vararg val arguments: Any)
 
 data class ScanSummary(
     val dateMatchedCount: Int,
@@ -44,8 +49,8 @@ data class ScanSummary(
     val scoredCount: Int,
 )
 
-class ScanViewModel(application: Application) : AndroidViewModel(application) {
-    private val models = ModelRepository(application)
+class ScanViewModel(app: Application) : AndroidViewModel(app) {
+    private val models = ModelRepository(app)
     private val _state = MutableStateFlow(ScanUiState(
         settings = ScanSettings(aestheticModelId = models.selected.id),
         models = models.catalog.models, downloadedModels = models.downloadedIds(),
@@ -70,26 +75,26 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private fun downloadModels(onReady: () -> Unit = {}) {
         if (_state.value.isScanning || _state.value.preparingModels) return
         val chosen = models.catalog.aesthetic(_state.value.settings.aestheticModelId)
-        _state.value = _state.value.copy(preparingModels = true, error = null, modelProgress = "正在检查模型")
+        _state.value = _state.value.copy(preparingModels = true, error = null, modelProgress = null)
         viewModelScope.launch {
             var prepared = false
             try {
                 var last = 0L
                 for (model in listOf(chosen, models.catalog.segmentation)) {
-                    models.prepare(model) { name, done, total ->
+                    models.prepare(model) { _, done, total ->
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (done == 0L || done == total || now - last >= 200) {
                             last = now
-                            _state.value = _state.value.copy(modelProgress = "$name：${done * 100 / total}%")
+                            _state.value = _state.value.copy(modelProgress = ModelProgress(model, done * 100 / total))
                         }
                     }
                 }
-                _state.value = _state.value.copy(modelsReady = true, modelProgress = "模型已就绪，可离线分析")
+                _state.value = _state.value.copy(modelsReady = true, modelProgress = null)
                 prepared = true
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
                 _state.value = _state.value.copy(modelsReady = false, modelProgress = null,
-                    error = "模型准备失败：${error.message}。恢复网络后点击开始分析会自动重试，已下载完成的模型会保留。")
+                    error = ScanMessage(R.string.models_failed, error))
             } finally {
                 _state.value = _state.value.copy(preparingModels = false, downloadedModels = models.downloadedIds())
             }
@@ -139,7 +144,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         if (_state.value.isScanning || _state.value.preparingModels) return
         if (!_state.value.modelsReady) { downloadModels { scan(dateStartMs, dateEndMs) }; return }
         val snapshot = _state.value.copy(settings = _state.value.settings.copy(dateStartMs = dateStartMs, dateEndMs = dateEndMs))
-        if (!snapshot.hasPhotoAccess) { _state.value = snapshot.copy(error = "请允许访问系统相册后再分析"); return }
+        if (!snapshot.hasPhotoAccess) { _state.value = snapshot.copy(error = ScanMessage(R.string.scan_permission_failed)); return }
         viewModelScope.launch {
             _state.value = snapshot.copy(isScanning = true, candidates = emptyList(), lastScan = null, error = null, progress = ScanProgress())
             try {
@@ -153,19 +158,20 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     candidates = result.candidates,
                     lastScan = ScanSummary(result.dateMatchedCount, result.sizeEligibleCount, result.candidates.size),
                 )
+            } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                _state.value = _state.value.copy(isScanning = false, error = "分析失败：${error.message}")
+                _state.value = _state.value.copy(isScanning = false, error = ScanMessage(R.string.scan_failed, error))
             }
         }
     }
 
 
     fun export(destinationTree: Uri, candidates: List<PhotoCandidate>) {
-        if (candidates.isEmpty()) { _state.value = _state.value.copy(error = "当前筛选条件下没有图片可导出"); return }
+        if (candidates.isEmpty()) { _state.value = _state.value.copy(error = ScanMessage(R.string.export_empty)); return }
         viewModelScope.launch {
             try {
                 val count = withContext(Dispatchers.IO) {
-                    val directory = DocumentFile.fromTreeUri(getApplication(), destinationTree) ?: error("无法访问导出目录")
+                    val directory = DocumentFile.fromTreeUri(getApplication(), destinationTree) ?: throw LocalizedFailure(R.string.export_directory_failed)
                     candidates.count { candidate ->
                         val output = uniqueFile(directory, candidate.displayName) ?: return@count false
                         val resolver = getApplication<Application>().contentResolver
@@ -175,8 +181,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         true
                     }
                 }
-                _state.value = _state.value.copy(error = "已导出 $count 张原图")
-            } catch (error: Exception) { _state.value = _state.value.copy(error = "导出失败：${error.message}") }
+                _state.value = _state.value.copy(error = ScanMessage(R.string.export_success, count))
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) { _state.value = _state.value.copy(error = ScanMessage(R.string.export_failed, error)) }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.awesomephoto
 
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.app.WallpaperManager
 import android.content.ComponentName
@@ -45,16 +46,16 @@ fun WallpaperApplyButton(photos: List<PhotoCandidate>) {
                 // Some system pickers omit RESULT_OK; a newly active component also proves confirmation.
                 val confirmed = result.resultCode == Activity.RESULT_OK || (!wasActive && active)
                 withContext(Dispatchers.IO) { if (confirmed) store.confirm() else store.cancel() }
-                message = if (confirmed) "已应用照片轮播壁纸" else "已取消应用，原壁纸设置保留"
+                message = if (confirmed) context.getString(R.string.wallpaper_applied) else context.getString(R.string.wallpaper_cancelled)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                message = "保存壁纸配置失败：${error.message}"
+                message = context.getString(R.string.wallpaper_config_failed, error.localizedMessage.orEmpty())
             } finally { busy = false }
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Button(onClick = { selection = photos.toList(); message = null }, enabled = photos.isNotEmpty() && !busy) {
-            Text(if (busy) "正在应用壁纸…" else "应用成当前设备壁纸")
+            Text(if (busy) stringResource(R.string.wallpaper_applying) else stringResource(R.string.wallpaper_apply))
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
@@ -68,7 +69,7 @@ fun WallpaperApplyButton(photos: List<PhotoCandidate>) {
                 val manager = WallpaperManager.getInstance(context)
                 if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_LIVE_WALLPAPER) ||
                     !manager.isWallpaperSupported || !manager.isSetWallpaperAllowed) {
-                    message = "当前设备不支持动态壁纸，或系统限制了更换壁纸"
+                    message = context.getString(R.string.wallpaper_unsupported)
                     selection = null
                 } else {
                     busy = true
@@ -83,7 +84,7 @@ fun WallpaperApplyButton(photos: List<PhotoCandidate>) {
                             withContext(Dispatchers.IO) { store.cancel() }
                             busy = false
                             if (error is CancellationException) throw error
-                            message = "应用失败：${error.message}。请检查存储空间和系统壁纸支持。"
+                            message = context.getString(R.string.wallpaper_apply_failed, error.localizedMessage.orEmpty())
                             selection = null
                         }
                     }
@@ -105,12 +106,12 @@ private fun WallpaperConfigurationDialog(
     var config by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("照片壁纸轮播") },
+        title = { Text(stringResource(R.string.wallpaper_slideshow)) },
         text = {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
-                    Text("从当前筛选结果选择照片，已选 ${selected.size}/${photos.size} 张。模型分数仅供参考。")
-                    Text("切换间隔", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.wallpaper_selection, selected.size, photos.size))
+                    Text(stringResource(R.string.wallpaper_interval), style = MaterialTheme.typography.titleSmall)
                 }
                 item {
                     Column {
@@ -119,29 +120,29 @@ private fun WallpaperConfigurationDialog(
                                 group.forEach { minutes ->
                                     FilterChip(selected = config.intervalMinutes == minutes, enabled = !busy,
                                         onClick = { config = config.copy(intervalMinutes = minutes) },
-                                        label = { Text(when { minutes == 1440 -> "每天"; minutes >= 60 -> "${minutes / 60}小时"; else -> "${minutes}分" }) })
+                                        label = { Text(when { minutes == 1440 -> stringResource(R.string.wallpaper_daily); minutes >= 60 -> stringResource(R.string.wallpaper_hours, minutes / 60); else -> stringResource(R.string.wallpaper_minutes, minutes) }) })
                                 }
                             }
                         }
                     }
                 }
                 item {
-                    Text("播放顺序", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.wallpaper_order), style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = config.shuffle, enabled = !busy, onClick = { config = config.copy(shuffle = true) }, label = { Text("随机") })
-                        FilterChip(selected = !config.shuffle, enabled = !busy, onClick = { config = config.copy(shuffle = false) }, label = { Text("按结果顺序") })
+                        FilterChip(selected = config.shuffle, enabled = !busy, onClick = { config = config.copy(shuffle = true) }, label = { Text(stringResource(R.string.wallpaper_shuffle)) })
+                        FilterChip(selected = !config.shuffle, enabled = !busy, onClick = { config = config.copy(shuffle = false) }, label = { Text(stringResource(R.string.wallpaper_rank_order)) })
                     }
-                    Text("显示方式", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.wallpaper_fit_mode), style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = config.fillScreen, enabled = !busy, onClick = { config = config.copy(fillScreen = true) }, label = { Text("居中铺满") })
-                        FilterChip(selected = !config.fillScreen, enabled = !busy, onClick = { config = config.copy(fillScreen = false) }, label = { Text("完整显示") })
+                        FilterChip(selected = config.fillScreen, enabled = !busy, onClick = { config = config.copy(fillScreen = true) }, label = { Text(stringResource(R.string.wallpaper_fill)) })
+                        FilterChip(selected = !config.fillScreen, enabled = !busy, onClick = { config = config.copy(fillScreen = false) }, label = { Text(stringResource(R.string.wallpaper_fit)) })
                     }
-                    Text(if (config.fillScreen) "铺满屏幕会裁去超出部分，不修改原图。" else "保留整张照片，空白处使用黑色背景。", style = MaterialTheme.typography.bodySmall)
-                    Text("仅壁纸可见时运行；熄屏时暂停绘制，返回桌面时按间隔更新。单张照片固定显示。下一步在系统预览页确认，桌面/锁屏选项以系统提供为准。更换其他系统壁纸即可停止轮播。", style = MaterialTheme.typography.bodySmall)
-                    Text("选中照片将复制到应用私有空间，退出应用、重启设备后仍可使用；清除应用数据或卸载会移除这些副本。", style = MaterialTheme.typography.bodySmall)
+                    Text(if (config.fillScreen) stringResource(R.string.wallpaper_fill_hint) else stringResource(R.string.wallpaper_fit_hint), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.wallpaper_behavior), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.wallpaper_storage), style = MaterialTheme.typography.bodySmall)
                     Row {
-                        TextButton(enabled = !busy, onClick = { selected = photos.map { it.uri }.toSet() }) { Text("全选") }
-                        TextButton(enabled = !busy, onClick = { selected = emptySet() }) { Text("清空") }
+                        TextButton(enabled = !busy, onClick = { selected = photos.map { it.uri }.toSet() }) { Text(stringResource(R.string.select_all)) }
+                        TextButton(enabled = !busy, onClick = { selected = emptySet() }) { Text(stringResource(R.string.clear_selection)) }
                     }
                 }
                 items(photos, key = { it.uri.toString() }) { photo ->
@@ -153,17 +154,17 @@ private fun WallpaperConfigurationDialog(
                         AsyncImage(model = photo.uri, contentDescription = null, modifier = Modifier.size(48.dp))
                         Column(Modifier.weight(1f)) {
                             Text(photo.displayName, maxLines = 2, style = MaterialTheme.typography.bodySmall)
-                            Text("模型参考分 ${photo.score}", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.model_score, photo.score), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
-                if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("正在准备本机壁纸副本…") }
+                if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.wallpaper_preparing)) }
             }
         },
         confirmButton = {
             TextButton(enabled = selected.isNotEmpty() && !busy,
-                onClick = { onApply(photos.filter { it.uri in selected }, config) }) { Text("应用并预览 (${selected.size})") }
+                onClick = { onApply(photos.filter { it.uri in selected }, config) }) { Text(stringResource(R.string.apply_preview, selected.size)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) } },
     )
 }

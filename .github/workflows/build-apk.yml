@@ -73,11 +73,11 @@ jobs:
           python -m pip install -r tools/requirements-modelscope.txt
           python tools/publish_models_modelscope.py
       - name: Verify packaged models match runtime calibration
-        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests com.awesomephoto.model.AestheticCalibrationTest
+        run: ./gradlew --no-daemon :app:testSideloadDebugUnitTest --tests com.awesomephoto.model.AestheticCalibrationTest
       - name: Build signed APK
         run: |
           VERSION_NAME="${VERSION#v}"
-          gradle_args=(--no-daemon :app:assembleRelease \
+          gradle_args=(--no-daemon :app:assembleSideloadRelease \
             -PreleaseVersionName="$VERSION_NAME" \
             -PreleaseVersionCode="$GITHUB_RUN_NUMBER")
           # Optional override; otherwise Gradle uses the cyeam.com multi-app gateway.
@@ -85,6 +85,8 @@ jobs:
             gradle_args+=("-PappUpdateUrl=$APP_UPDATE_URL")
           fi
           ./gradlew "${gradle_args[@]}"
+          mkdir -p app/build/outputs/apk/release
+          cp app/build/outputs/apk/sideload/release/app-sideload-release.apk app/build/outputs/apk/release/app-release.apk
       - name: Verify lightweight APK
         run: |
           python - <<'PYCODE'

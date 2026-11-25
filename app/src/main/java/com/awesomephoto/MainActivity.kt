@@ -1,5 +1,10 @@
 package com.awesomephoto
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalConfiguration
+import java.text.DateFormatSymbols
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import android.os.Build
 import android.content.Intent
@@ -15,7 +20,6 @@ import android.media.ExifInterface
 import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -180,18 +184,19 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Image(painter = painterResource(R.drawable.wallpaper_finder_logo), contentDescription = "壁纸照片分析器", modifier = Modifier.size(40.dp))
-            Text("批量壁纸筛选", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Image(painter = painterResource(R.drawable.wallpaper_finder_logo), contentDescription = stringResource(R.string.app_name), modifier = Modifier.size(40.dp))
+            Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-        Text("照片仅在本机评价美感、主体明确度和清晰度，不上传。横图进入桌面候选，竖图进入 App 候选。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.scan_description), style = MaterialTheme.typography.bodySmall)
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             ModelSelectionPanel(state, viewModel::selectModel)
         }
+        item(span = { GridItemSpan(maxLineSpan) }) { DistributionLinks() }
         if (!state.hasPhotoAccess) item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("需要相册访问权限才能分析照片；若未授权，可在系统设置中开启本应用的照片访问权限。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.photo_access_required), style = MaterialTheme.typography.bodySmall)
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -213,53 +218,59 @@ private fun BatchScanScreen(viewModel: ScanViewModel) {
         }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && !state.preparingModels && state.hasPhotoAccess) { Text("开始分析") }
+            Button(onClick = { viewModel.scan(startDateMs, endDateMs) }, enabled = !state.isScanning && !state.preparingModels && state.hasPhotoAccess) { Text(stringResource(R.string.start_scan)) }
         }
-        state.error?.let { message -> item(span = { GridItemSpan(maxLineSpan) }) { Text(message, color = MaterialTheme.colorScheme.error) } }
+        state.error?.let { message ->
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                val resources = LocalContext.current.resources
+                val args = message.arguments.map { if (it is Throwable) it.messageFor(resources) else it }.toTypedArray()
+                Text(stringResource(message.resId, *args), color = MaterialTheme.colorScheme.error)
+            }
+        }
         if (state.isScanning) item(span = { GridItemSpan(maxLineSpan) }) { Progress(state.progress) }
         if (!state.isScanning && state.candidates.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("已完成 ${state.candidates.size} 张壁纸评分；当前显示 ${visible.size} 张", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.scan_results, state.candidates.size, visible.size), fontWeight = FontWeight.SemiBold)
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(ScoreBand.entries, scoreBand, ScoreBand.ALL, { it.label }, { scoreCounts.getValue(it) }) { scoreBand = it }
+                FilterGroup(ScoreBand.entries, scoreBand, ScoreBand.ALL, { it.labelRes }, { scoreCounts.getValue(it) }) { scoreBand = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(PhotoKind.entries, activeKind, PhotoKind.ALL, { it.label }, { kindCounts.getValue(it) }) { activeKind = it }
+                FilterGroup(PhotoKind.entries, activeKind, PhotoKind.ALL, { it.labelRes }, { kindCounts.getValue(it) }) { activeKind = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FilterGroup(Orientation.entries, orientation, Orientation.ALL, { it.label }, { orientationCounts.getValue(it) }) { orientation = it }
+                FilterGroup(Orientation.entries, orientation, Orientation.ALL, { it.labelRes }, { orientationCounts.getValue(it) }) { orientation = it }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text("导出当前筛选结果 (${visible.size})") }
+                    Button(onClick = { exportPicker.launch(null) }, enabled = visible.isNotEmpty()) { Text(stringResource(R.string.export_results, visible.size)) }
                     WallpaperApplyButton(visible)
                 }
             }
             if (visible.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("当前条件下没有照片，请选择“全部”放宽筛选条件，或调整日期范围。", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.no_filter_results), style = MaterialTheme.typography.bodyMedium)
             }
             items(visible, key = { it.uri.toString() }) { candidate -> CandidateCard(candidate) { previewCandidate = candidate } }
         } else if (!state.isScanning && state.lastScan != null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 val summary = requireNotNull(state.lastScan)
                 Text(
-                    "本次已完成：日期范围内 ${summary.dateMatchedCount} 张，尺寸合格 ${summary.sizeEligibleCount} 张，成功评分 ${summary.scoredCount} 张。",
+                    stringResource(R.string.scan_summary, summary.dateMatchedCount, summary.sizeEligibleCount, summary.scoredCount),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
         } else if (!state.isScanning && state.hasPhotoAccess && state.error == null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("选择日期范围后开始分析；结果会直接在这里显示。", style = MaterialTheme.typography.bodyMedium) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(stringResource(R.string.scan_hint), style = MaterialTheme.typography.bodyMedium) }
         }
     }
-    AppUpdatePanel()
+    DistributionPanel()
     previewCandidate?.let { candidate -> PhotoPreviewDialog(candidate) { previewCandidate = null } }
 }
 
 @Composable
 private fun SettingFields(settings: ScanSettings, enabled: Boolean, onChange: (ScanSettings) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        NumberField("最多扫描", settings.scanLimit, enabled) { onChange(settings.copy(scanLimit = it)) }
+        NumberField(stringResource(R.string.scan_limit), settings.scanLimit, enabled) { onChange(settings.copy(scanLimit = it)) }
     }
 }
 
@@ -274,15 +285,17 @@ private fun DateRangeFilter(
     onRangeConfirmed: (Long, Long) -> Unit,
     onMonthVisible: (Int, Int) -> Unit,
 ) {
-    val context = LocalContext.current
-    val formatter = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+    val formatter = remember(locale) {
+        SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "Md"), locale)
+    }
     var showCalendar by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         FilterChip(
             selected = true,
             onClick = { showCalendar = true },
             enabled = enabled && hasFolder,
-            label = { Text("日期 ${formatter.format(startDateMs)}–${formatter.format(endDateMs)}") },
+            label = { Text(stringResource(R.string.date_range, formatter.format(startDateMs), formatter.format(endDateMs))) },
         )
     }
     if (showCalendar) CalendarRangeDialog(
@@ -308,8 +321,10 @@ private fun CalendarRangeDialog(
     onConfirm: (Long, Long) -> Unit,
     onMonthVisible: (Int, Int) -> Unit,
 ) {
-    val context = LocalContext.current
-    val formatter = remember { SimpleDateFormat("MM/dd", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+    val formatter = remember(locale) {
+        SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "Md"), locale)
+    }
     val initialCalendar = remember(startDateMs) { Calendar.getInstance().apply { timeInMillis = startDateMs } }
     var shownMonth by remember { mutableStateOf(CalendarMonth(initialCalendar.get(Calendar.YEAR), initialCalendar.get(Calendar.MONTH))) }
     var selectedStart by remember { mutableStateOf(startDateMs) }
@@ -322,6 +337,14 @@ private fun CalendarRangeDialog(
     }
     val offset = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val days = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val monthLabel = remember(locale, shownMonth) {
+        SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "yMMMM"), locale)
+            .format(monthCalendar.time)
+    }
+    val weekdays = remember(locale) {
+        val names = DateFormatSymbols.getInstance(locale).shortWeekdays
+        (Calendar.MONDAY..Calendar.SATURDAY).map { names[it] } + names[Calendar.SUNDAY]
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
@@ -331,32 +354,32 @@ private fun CalendarRangeDialog(
                         val previous = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month - 1, 1) }
                         shownMonth = CalendarMonth(previous.get(Calendar.YEAR), previous.get(Calendar.MONTH))
                     }) { Text("‹") }
-                    Text("${shownMonth.year}年${shownMonth.month + 1}月", fontWeight = FontWeight.Bold, modifier = Modifier.width(176.dp))
+                    Text(monthLabel, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     if (isIndexing) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     TextButton(onClick = {
                         val next = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month + 1, 1) }
                         shownMonth = CalendarMonth(next.get(Calendar.YEAR), next.get(Calendar.MONTH))
                     }) { Text("›") }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { weekday ->
-                        Text(weekday, modifier = Modifier.width(42.dp), style = MaterialTheme.typography.labelSmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    weekdays.forEach { weekday ->
+                        Text(weekday, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 (0 until 6).forEach { week ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (0 until 7).forEach { dayOfWeek ->
                             val index = week * 7 + dayOfWeek
                             val day = index - offset + 1
                             if (day !in 1..days) {
-                                Box(Modifier.width(42.dp).height(50.dp))
+                                Box(Modifier.weight(1f).height(50.dp))
                             } else {
                                 val dayMs = Calendar.getInstance().apply { clear(); set(shownMonth.year, shownMonth.month, day, 0, 0, 0) }.timeInMillis
                                 val inRange = dayMs in selectedStart..selectedEnd
                                 Surface(
                                     color = if (inRange) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.width(42.dp).height(50.dp).clickable {
+                                    modifier = Modifier.weight(1f).height(50.dp).clickable {
                                         if (!awaitingEnd) {
                                             selectedStart = dayMs
                                             selectedEnd = dayMs
@@ -380,8 +403,8 @@ private fun CalendarRangeDialog(
                 }
                 Text("${formatter.format(selectedStart)} — ${formatter.format(selectedEnd)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
-                    TextButton(onClick = { onConfirm(selectedStart, selectedEnd) }) { Text("确定") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { onConfirm(selectedStart, selectedEnd) }) { Text(stringResource(R.string.confirm)) }
                 }
             }
         }
@@ -397,7 +420,7 @@ private fun endOfDay(timeMs: Long): Long = Calendar.getInstance().apply {
 }.timeInMillis
 
 @Composable
-private fun <T> FilterGroup(values: Iterable<T>, selected: T, allValue: T, label: (T) -> String, count: (T) -> Int, select: (T) -> Unit) {
+private fun <T> FilterGroup(values: Iterable<T>, selected: T, allValue: T, label: (T) -> Int, count: (T) -> Int, select: (T) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         lazyRowItems(values.toList()) { value ->
             val optionCount = count(value)
@@ -406,7 +429,7 @@ private fun <T> FilterGroup(values: Iterable<T>, selected: T, allValue: T, label
                 onClick = { select(value) },
                 // Keep a way to clear filters even when a new scan/date range has no matches.
                 enabled = value == allValue || optionCount > 0,
-                label = { Text("${label(value)} ($optionCount)") },
+                label = { Text(stringResource(R.string.filter_count, stringResource(label(value)), optionCount)) },
             )
         }
     }
@@ -423,10 +446,10 @@ private fun Progress(progress: com.awesomephoto.model.ScanProgress) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             when (progress.stage) {
-                ScanStage.DISCOVERING -> "正在发现图片 ${progress.done} 张"
-                ScanStage.CHECKING_SIZE -> "正在检查尺寸 ${progress.done} / ${progress.total}"
-                ScanStage.ANALYSING -> "正在分析 ${progress.done} / ${progress.total}"
-                ScanStage.PREPARING -> "正在准备图片…"
+                ScanStage.DISCOVERING -> stringResource(R.string.discovering_photos, progress.done)
+                ScanStage.CHECKING_SIZE -> stringResource(R.string.checking_photo_sizes, progress.done, progress.total)
+                ScanStage.ANALYSING -> stringResource(R.string.analyzing_photos, progress.done, progress.total)
+                ScanStage.PREPARING -> stringResource(R.string.preparing_photos)
             }
         )
         LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
@@ -442,22 +465,22 @@ private fun CandidateCard(candidate: PhotoCandidate, onPreview: () -> Unit) {
     Box {
         Card(modifier = Modifier.combinedClickable(
             onClick = onPreview,
-            onClickLabel = "预览照片",
+            onClickLabel = stringResource(R.string.preview_photo),
             onLongClick = { showActions = true },
-            onLongClickLabel = "分享或用其他应用打开",
+            onLongClickLabel = stringResource(R.string.photo_actions),
         )) {
             Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AsyncImage(model = candidate.uri, contentDescription = candidate.displayName, modifier = Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
-                Text("模型参考分 ${candidate.score} · ${candidate.target.label}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                Text(candidate.semanticLabels.joinToString(" · ").ifBlank { candidate.kind.label }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(stringResource(R.string.score_with_label, candidate.score, stringResource(candidate.target.labelRes)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(candidate.semanticLabels.map { semanticLabel(it) }.joinToString(" · ").ifBlank { stringResource(candidate.kind.labelRes) }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
         DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
-            DropdownMenuItem(text = { Text("分享") }, onClick = {
+            DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
                 showActions = false
                 launchPhotoAction(context, candidate, Intent.ACTION_SEND)
             })
-            DropdownMenuItem(text = { Text("用其他应用打开") }, onClick = {
+            DropdownMenuItem(text = { Text(stringResource(R.string.open_with)) }, onClick = {
                 showActions = false
                 launchPhotoAction(context, candidate, Intent.ACTION_VIEW)
             })
@@ -480,11 +503,11 @@ private fun launchPhotoAction(context: android.content.Context, candidate: Photo
             clipData = ClipData.newRawUri(candidate.displayName, candidate.uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, if (action == Intent.ACTION_SEND) "分享照片" else "用其他应用打开"))
+        context.startActivity(Intent.createChooser(intent, context.getString(if (action == Intent.ACTION_SEND) R.string.share_photo else R.string.open_with)))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "没有可处理此照片的应用", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.no_photo_handler), Toast.LENGTH_SHORT).show()
     } catch (_: SecurityException) {
-        Toast.makeText(context, "无法访问此照片，请检查相册访问权限", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.photo_unavailable), Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -495,6 +518,7 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
     var hasLocationAccess by remember { mutableStateOf(hasPhotoLocationAccess(context)) }
     var reload by remember { mutableStateOf(0) }
     var permissionDenied by remember { mutableStateOf(false) }
+    val closeLabel = stringResource(R.string.close_preview)
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasLocationAccess = hasPhotoLocationAccess(context)
         permissionDenied = !granted
@@ -513,7 +537,7 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
         Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text("×", modifier = Modifier.size(32.dp).clickable(onClick = onDismiss), style = MaterialTheme.typography.headlineSmall)
+                    Text("×", modifier = Modifier.size(32.dp).clickable(onClick = onDismiss).semantics { contentDescription = closeLabel }, style = MaterialTheme.typography.headlineSmall)
                 }
                 AsyncImage(
                     model = candidate.uri,
@@ -521,10 +545,10 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                     modifier = Modifier.fillMaxWidth().height(560.dp).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Fit,
                 )
-                Text("模型参考分 ${candidate.score} · ${candidate.displayName}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.score_with_label, candidate.score, candidate.displayName), maxLines = 1, style = MaterialTheme.typography.bodySmall)
                 ScoreExplanation(candidate)
-                details?.takenAt?.let { Text("拍摄于 $it", style = MaterialTheme.typography.bodySmall) }
-                Text("地点：${details?.placeName ?: "正在读取…"}", style = MaterialTheme.typography.bodySmall)
+                details?.takenAt?.let { Text(stringResource(R.string.capture_date, it), style = MaterialTheme.typography.bodySmall) }
+                Text(stringResource(R.string.photo_location, details?.placeName ?: stringResource(R.string.loading_location)), style = MaterialTheme.typography.bodySmall)
                 if (!hasLocationAccess && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     TextButton(onClick = {
                         if (permissionDenied) {
@@ -532,7 +556,7 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
                         } else {
                             locationPermission.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
                         }
-                    }) { Text(if (permissionDenied) "前往设置开启照片位置权限" else "允许读取照片位置") }
+                    }) { Text(stringResource(if (permissionDenied) R.string.location_settings else R.string.read_location)) }
                 }
             }
         }
@@ -541,26 +565,41 @@ private fun PhotoPreviewDialog(candidate: PhotoCandidate, onDismiss: () -> Unit)
 
 @Composable
 private fun ScoreExplanation(candidate: PhotoCandidate) {
+    val isChinese = LocalConfiguration.current.locales[0].language == "zh"
     var expanded by remember(candidate.uri) { mutableStateOf(false) }
     TextButton(onClick = { expanded = !expanded }) {
-        Text(if (expanded) "收起评分依据" else "查看评分口径与原因")
+        Text(stringResource(if (expanded) R.string.hide_score_details else R.string.show_score_details))
     }
     if (expanded) {
-        Text("模型参考分 ${candidate.score}/100 · 向下取整", fontWeight = FontWeight.SemiBold)
-        Text("本地审美模型占 70%，主体区域连贯性占 20%，清晰度占 10%。已支持用大模型视觉参考评分校准美感分数，实际口径见下方明细；仍是筛选参考，不代表个人回忆价值，不评价屏幕适配。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.score_total, candidate.score), fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.scores_description), style = MaterialTheme.typography.bodySmall)
         if (candidate.scoreDetails.isEmpty()) {
-            Text("此记录尚无评分明细，请重新分析照片。")
+            Text(stringResource(R.string.missing_score_details))
         }
         candidate.scoreDetails.forEach { detail ->
-            Text(String.format(Locale.getDefault(), "%s：%.2f / %.2f 分", detail.name, detail.points, detail.weight), fontWeight = FontWeight.SemiBold)
-            Text("口径：${detail.policy}", style = MaterialTheme.typography.bodySmall)
-            Text("依据：${detail.reason}", style = MaterialTheme.typography.bodySmall)
+            val copy = detail.displayText(isChinese)
+            Text(stringResource(R.string.score_component, copy.name, detail.points, detail.weight), fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.score_method, copy.policy), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.score_reason, copy.reason), style = MaterialTheme.typography.bodySmall)
         }
-        Text("明细显示值经过四舍五入；总分使用未舍入值向下取整。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.score_rounding), style = MaterialTheme.typography.bodySmall)
     }
 }
 
 private data class PhotoDetails(val takenAt: String?, val placeName: String)
+
+@Composable
+private fun semanticLabel(label: String): String = when (label) {
+    "天空" -> stringResource(R.string.tag_sky)
+    "山" -> stringResource(R.string.tag_mountain)
+    "水景" -> stringResource(R.string.tag_water)
+    "人物" -> stringResource(R.string.filter_people)
+    "建筑" -> stringResource(R.string.filter_architecture)
+    "草木" -> stringResource(R.string.tag_vegetation)
+    "雕塑" -> stringResource(R.string.tag_sculpture)
+    "绘画" -> stringResource(R.string.tag_painting)
+    else -> label
+}
 
 private fun hasPhotoLocationAccess(context: android.content.Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
@@ -578,20 +617,20 @@ private suspend fun loadPhotoDetails(context: android.content.Context, uri: andr
     val originalExif = readExif(originalUri)
     // Preserve the capture date if the provider cannot supply the original file.
     val exif = originalExif ?: if (originalUri != uri) readExif(uri) else null
-    val failure = if (!canReadLocation) "需要允许读取照片位置信息" else "无法读取原图位置信息，请重试"
+    val failure = if (!canReadLocation) context.getString(R.string.photo_location_permission) else context.getString(R.string.photo_location_failed)
     if (exif == null) return@withContext PhotoDetails(null, failure)
     val takenAt = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
         ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
     val coordinates = FloatArray(2)
     if (!canReadLocation || originalExif == null) return@withContext PhotoDetails(takenAt, failure)
-    if (!exif.getLatLong(coordinates)) return@withContext PhotoDetails(takenAt, "照片文件未记录位置信息")
-    val coordinateLabel = String.format(Locale.getDefault(), "纬度 %.5f，经度 %.5f", coordinates[0], coordinates[1])
+    if (!exif.getLatLong(coordinates)) return@withContext PhotoDetails(takenAt, context.getString(R.string.photo_location_missing))
+    val coordinateLabel = context.getString(R.string.photo_coordinates, coordinates[0], coordinates[1])
     val placeName = if (Geocoder.isPresent()) runCatching {
-        val address = Geocoder(context, Locale.getDefault())
+        val address = Geocoder(context, context.resources.configuration.locales[0])
             .getFromLocation(coordinates[0].toDouble(), coordinates[1].toDouble(), 1)
             ?.firstOrNull()
         address?.getAddressLine(0)?.takeIf { it.isNotBlank() } ?: listOfNotNull(address?.countryName, address?.adminArea, address?.locality, address?.subLocality, address?.featureName)
             .distinct().joinToString("·").ifBlank { null }
     }.getOrNull() else null
-    PhotoDetails(takenAt, placeName ?: "$coordinateLabel（暂未解析出地址）")
+    PhotoDetails(takenAt, placeName ?: context.getString(R.string.coordinates_without_address, coordinateLabel))
 }

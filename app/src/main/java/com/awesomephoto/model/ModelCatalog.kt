@@ -1,5 +1,7 @@
 package com.awesomephoto.model
 
+import android.content.res.Resources
+import com.awesomephoto.R
 import android.content.Context
 import org.json.JSONObject
 
@@ -19,6 +21,9 @@ data class DownloadableModel(
         if (role == "segmentation") require(inputSize == 512 && normalization == "imagenet")
         else require(normalization != "imagenet")
     }
+    fun displayName(resources: Resources): String =
+        if (id == "nima-mobile") resources.getString(R.string.model_nima) else name
+
     val fileName: String get() = "$id-$sha256.onnx"
     val cacheIdentity: String get() = "$id:$sha256:$inputSize:$normalization"
     val sizeMiB: Double get() = bytes / 1048576.0

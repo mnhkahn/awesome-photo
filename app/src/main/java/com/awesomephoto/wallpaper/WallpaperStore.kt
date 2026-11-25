@@ -1,5 +1,6 @@
 package com.awesomephoto.wallpaper
 
+import com.awesomephoto.R
 import android.content.Context
 import android.graphics.BitmapFactory
 import com.awesomephoto.model.PhotoCandidate
@@ -26,29 +27,29 @@ class WallpaperStore(private val context: Context) {
     }
 
     fun prepare(photos: List<PhotoCandidate>, config: SlideshowConfig) {
-        require(photos.isNotEmpty()) { "请至少选择一张照片" }
+        require(photos.isNotEmpty()) { context.getString(R.string.wallpaper_no_photos) }
         val directory = File(root, UUID.randomUUID().toString())
-        check(directory.mkdirs()) { "无法创建壁纸目录" }
+        check(directory.mkdirs()) { context.getString(R.string.wallpaper_mkdir_failed) }
         try {
             val names = photos.mapIndexed { index, photo ->
                 val file = File(directory, "$index.image")
-                val source = context.contentResolver.openInputStream(photo.uri) ?: error("无法读取 ${photo.displayName}")
+                val source = context.contentResolver.openInputStream(photo.uri) ?: error(context.getString(R.string.wallpaper_read_failed, photo.displayName))
                 source.use { input -> file.outputStream().use { input.copyTo(it) } }
                 // Check the actual copied data before replacing a working album; decode only a thumbnail.
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(file.path, bounds)
-                check(bounds.outWidth > 0 && bounds.outHeight > 0) { "无法解码 ${photo.displayName}" }
+                check(bounds.outWidth > 0 && bounds.outHeight > 0) { context.getString(R.string.wallpaper_decode_failed, photo.displayName) }
                 val options = BitmapFactory.Options().apply {
                     inSampleSize = 1
                     while (maxOf(bounds.outWidth, bounds.outHeight) / inSampleSize > 128) inSampleSize *= 2
                 }
-                val thumbnail = BitmapFactory.decodeFile(file.path, options) ?: error("无法解码 ${photo.displayName}")
+                val thumbnail = BitmapFactory.decodeFile(file.path, options) ?: error(context.getString(R.string.wallpaper_decode_failed, photo.displayName))
                 thumbnail.recycle()
                 file.name
             }
             val json = JSONObject().put("directory", directory.name).put("files", JSONArray(names))
                 .put("interval", config.intervalMinutes).put("shuffle", config.shuffle).put("fill", config.fillScreen)
-            check(preferences.edit().putString("pending", json.toString()).commit()) { "无法保存轮播配置" }
+            check(preferences.edit().putString("pending", json.toString()).commit()) { context.getString(R.string.wallpaper_pending_failed) }
             cleanup()
         } catch (error: Exception) {
             directory.deleteRecursively()
@@ -58,7 +59,7 @@ class WallpaperStore(private val context: Context) {
 
     fun confirm() {
         val pending = preferences.getString("pending", null) ?: return
-        check(preferences.edit().putString("active", pending).remove("pending").commit()) { "无法保存壁纸配置" }
+        check(preferences.edit().putString("active", pending).remove("pending").commit()) { context.getString(R.string.wallpaper_store_failed) }
         cleanup()
     }
 

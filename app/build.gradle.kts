@@ -8,9 +8,11 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
-val releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+val releaseKeystoreFile = providers.environmentVariable("ANDROID_KEYSTORE_FILE")
+val playKeystoreFile = providers.environmentVariable("PLAY_UPLOAD_KEYSTORE_FILE")
 val releaseVersionName = providers.gradleProperty("releaseVersionName").orElse("1.0")
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orElse("1")
+val privacyPolicyUrl = "https://blog.cyeam.com/awesome-photo/privacy/"
 val appUpdateUrl = providers.gradleProperty("appUpdateUrl").orElse("https://www.cyeam.com/api/apps/awesome-photo/update")
 
 // Content-based cache identity: stable across machines/builds, changes with analysis inputs.
@@ -36,18 +38,16 @@ tasks.named("preBuild") { dependsOn(prepareLightAssets) }
 android {
     sourceSets.getByName("main").assets.setSrcDirs(listOf(layout.buildDirectory.dir("generated/light-assets")))
     namespace = "com.awesomephoto"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.awesomephoto"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = releaseVersionCode.get().toInt()
         versionName = releaseVersionName.get()
 
         buildConfigField("String", "ANALYSIS_FINGERPRINT", "\"$analysisFingerprint\"")
-
-        buildConfigField("String", "APP_UPDATE_URL", "\"${appUpdateUrl.get()}\"")
 
     }
 
@@ -58,20 +58,33 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     signingConfigs {
-        if (releaseKeystoreFile != null) {
-            create("release") {
-                storeFile = file(releaseKeystoreFile)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-            }
+        create("sideload") {
+            storeFile = releaseKeystoreFile.orNull?.let { file(it) }
+            storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+            keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+            keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+        }
+        create("playUpload") {
+            storeFile = playKeystoreFile.orNull?.let { file(it) }
+            storePassword = providers.environmentVariable("PLAY_UPLOAD_KEYSTORE_PASSWORD").orNull
+            keyAlias = providers.environmentVariable("PLAY_UPLOAD_KEY_ALIAS").orNull
+            keyPassword = providers.environmentVariable("PLAY_UPLOAD_KEY_PASSWORD").orNull
         }
     }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.findByName("release")
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("sideload") {
+            dimension = "distribution"
+            if (releaseKeystoreFile.isPresent) signingConfig = signingConfigs.getByName("sideload")
+            buildConfigField("String", "APP_UPDATE_URL", "\"${appUpdateUrl.get()}\"")
+        }
+        create("play") {
+            dimension = "distribution"
+            signingConfig = signingConfigs.getByName("playUpload")
+            buildConfigField("String", "PRIVACY_POLICY_URL", "\"$privacyPolicyUrl\"")
         }
     }
+    bundle { language { enableSplit = false } }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 

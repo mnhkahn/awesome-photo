@@ -1,5 +1,6 @@
 package com.awesomephoto
 
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -37,7 +38,7 @@ fun AppUpdatePanel(updater: AppUpdateViewModel = viewModel()) {
     var installError by remember { mutableStateOf<String?>(null) }
     fun install() {
         runCatching { context.startActivity(updater.installIntent()) }
-            .onFailure { installError = "无法打开系统安装器，请稍后重试" }
+            .onFailure { installError = context.getString(R.string.update_install_failed) }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (context.packageManager.canRequestPackageInstalls() && state.stage == UpdateStage.READY) install()
@@ -53,30 +54,30 @@ fun AppUpdatePanel(updater: AppUpdateViewModel = viewModel()) {
     if (hidden) {
         Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.BottomEnd) {
             Surface(tonalElevation = 6.dp, shadowElevation = 4.dp) {
-                TextButton(onClick = { hidden = false }) { Text(if (state.stage == UpdateStage.READY) "更新已下载，点击安装" else "查看更新状态") }
+                TextButton(onClick = { hidden = false }) { Text(if (state.stage == UpdateStage.READY) stringResource(R.string.update_downloaded) else stringResource(R.string.update_status)) }
             }
         }
         return
     }
     AlertDialog(
         onDismissRequest = { hidden = true },
-        title = { Text(if (state.version.isBlank()) "应用更新" else "更新至 ${state.version}") },
+        title = { Text(if (state.version.isBlank()) stringResource(R.string.update_title) else stringResource(R.string.update_version, state.version)) },
         text = { Column {
             Text(state.notes)
             Text(installError ?: state.message)
             if (state.stage == UpdateStage.DOWNLOADING) LinearProgressIndicator(progress = { state.progress })
-            if (state.stage == UpdateStage.READY) Text("安装由系统确认。首次使用需允许本应用安装更新。")
+            if (state.stage == UpdateStage.READY) Text(stringResource(R.string.update_install_notice))
         } },
         confirmButton = {
             when (state.stage) {
                 UpdateStage.READY -> TextButton(onClick = {
                     if (context.packageManager.canRequestPackageInstalls()) install()
                     else permission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
-                }) { Text("安装更新") }
-                UpdateStage.FAILED -> TextButton(onClick = { installError = null; updater.checkForUpdate() }) { Text("重试") }
-                else -> TextButton(onClick = { hidden = true }) { Text("后台下载") }
+                }) { Text(stringResource(R.string.update_install)) }
+                UpdateStage.FAILED -> TextButton(onClick = { installError = null; updater.checkForUpdate() }) { Text(stringResource(R.string.retry)) }
+                else -> TextButton(onClick = { hidden = true }) { Text(stringResource(R.string.update_background)) }
             }
         },
-        dismissButton = { TextButton(onClick = { hidden = true }) { Text("稍后") } }
+        dismissButton = { TextButton(onClick = { hidden = true }) { Text(stringResource(R.string.later)) } }
     )
 }

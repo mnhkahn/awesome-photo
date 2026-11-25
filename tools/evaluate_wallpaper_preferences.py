@@ -111,9 +111,9 @@ def main():
     (samples/'report.json').write_text(json.dumps(sample_report, ensure_ascii=False, indent=2))
     import os
     env = dict(os.environ, WALLPAPER_TEST_SAMPLES=str(samples.resolve()))
-    subprocess.run(['./gradlew', ':app:testDebugUnitTest', '--rerun-tasks', '--console=plain'],
+    subprocess.run(['./gradlew', ':app:testSideloadDebugUnitTest', '--rerun-tasks', '--console=plain'],
                    check=True, cwd=ROOT, env=env)
-    xml = ET.parse(ROOT/'app/build/test-results/testDebugUnitTest/TEST-com.awesomephoto.model.LocalWallpaperSamplesTest.xml')
+    xml = ET.parse(ROOT/'app/build/test-results/testSideloadDebugUnitTest/TEST-com.awesomephoto.model.LocalWallpaperSamplesTest.xml')
     output = xml.getroot().findtext('system-out', '')
     scores = {match[0]: float(match[1]) for match in re.findall(r'AUDIT_SCORE (\d+) ([0-9.]+)', output)}
     for row in rows:

@@ -47,8 +47,8 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                     val update = AppUpdateClient.check()
                     if (update == null) { mutable.value = UpdateState(); return@launch }
                     val request = DownloadManager.Request(Uri.parse(update.downloadUrl))
-                        .setTitle("壁纸照片分析器 ${update.versionName}")
-                        .setDescription("正在下载更新，下载完成后可安装")
+                        .setTitle(context.getString(R.string.update_download_title, context.getString(R.string.app_name), update.versionName))
+                        .setDescription(context.getString(R.string.update_downloading))
                         .setMimeType("application/vnd.android.package-archive")
                         .setAllowedOverMetered(false)
                         .setAllowedOverRoaming(false)
@@ -63,7 +63,7 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                 while (true) {
                     val snapshot = withContext(Dispatchers.IO) {
                         downloads.query(DownloadManager.Query().setFilterById(id)).use { c ->
-                            check(c.moveToFirst()) { "下载任务已移除，请重试" }
+                            check(c.moveToFirst()) { context.getString(R.string.update_task_removed) }
                             Triple(c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
                                 c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
                                 c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)))
@@ -72,35 +72,35 @@ class AppUpdateViewModel(application: Application) : AndroidViewModel(applicatio
                     when (snapshot.first) {
                         DownloadManager.STATUS_SUCCESSFUL -> {
                             withContext(Dispatchers.IO) { verifyApk() }
-                            mutable.value = current.copy(stage = UpdateStage.READY, progress = 1f, message = "下载完成，可以安装")
+                            mutable.value = current.copy(stage = UpdateStage.READY, progress = 1f, message = context.getString(R.string.update_ready))
                             break
                         }
-                        DownloadManager.STATUS_FAILED -> error("下载失败或链接已过期，请重试获取新地址")
+                        DownloadManager.STATUS_FAILED -> error(context.getString(R.string.update_retry_address))
                         else -> mutable.value = current.copy(progress = (snapshot.second.toFloat() / prefs.getLong("size", 1)).coerceIn(0f, 1f),
-                            message = if (snapshot.first == DownloadManager.STATUS_PAUSED) "等待 Wi-Fi 或网络恢复" else "正在后台下载（仅使用非计费网络）")
+                            message = if (snapshot.first == DownloadManager.STATUS_PAUSED) context.getString(R.string.update_wait_network) else context.getString(R.string.update_background_unmetered))
                     }
                     delay(1000)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutable.value = mutable.value.copy(stage = UpdateStage.FAILED, message = "更新检查、下载或安装包校验失败，请重试")
+                mutable.value = mutable.value.copy(stage = UpdateStage.FAILED, message = context.getString(R.string.update_failed))
             } finally { running = false }
         }
     }
 
     @Suppress("DEPRECATION")
     private fun verifyApk() {
-        check(apk.isFile && apk.length() == prefs.getLong("size", -1)) { "安装包不完整" }
+        check(apk.isFile && apk.length() == prefs.getLong("size", -1)) { context.getString(R.string.update_incomplete) }
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
         val pm = context.packageManager
-        val downloaded = checkNotNull(pm.getPackageArchiveInfo(apk.absolutePath, flags)) { "安装包无法读取" }
+        val downloaded = checkNotNull(pm.getPackageArchiveInfo(apk.absolutePath, flags)) { context.getString(R.string.update_unreadable) }
         val installed = pm.getPackageInfo(context.packageName, flags)
         val code = if (Build.VERSION.SDK_INT >= 28) downloaded.longVersionCode else downloaded.versionCode.toLong()
-        check(downloaded.packageName == context.packageName && code == prefs.getLong("versionCode", -1) && code > BuildConfig.VERSION_CODE) { "安装包版本不匹配" }
+        check(downloaded.packageName == context.packageName && code == prefs.getLong("versionCode", -1) && code > BuildConfig.VERSION_CODE) { context.getString(R.string.update_wrong_version) }
         val incoming = if (Build.VERSION.SDK_INT >= 28) downloaded.signingInfo?.apkContentsSigners else downloaded.signatures
         val existing = if (Build.VERSION.SDK_INT >= 28) installed.signingInfo?.apkContentsSigners else installed.signatures
-        check(!incoming.isNullOrEmpty() && !existing.isNullOrEmpty() && incoming.toSet() == existing.toSet()) { "安装包签名不匹配" }
+        check(!incoming.isNullOrEmpty() && !existing.isNullOrEmpty() && incoming.toSet() == existing.toSet()) { context.getString(R.string.update_wrong_signature) }
     }
 
     fun installIntent(): Intent {

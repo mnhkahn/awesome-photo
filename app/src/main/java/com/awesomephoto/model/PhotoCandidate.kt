@@ -1,11 +1,13 @@
 package com.awesomephoto.model
 
+import androidx.annotation.StringRes
+import com.awesomephoto.R
 import android.net.Uri
 
-enum class PhotoKind(val label: String) { ALL("全部"), PERSON("人物"), SCENERY("风景"), ARCHITECTURE("建筑"), ART("人文艺术"), OTHER("其他") }
-enum class WallpaperTarget(val label: String) { DESKTOP("桌面"), APP("App") }
-enum class ScoreBand(val label: String) { ALL("全部"), ABOVE_80("80+"), FROM_70("70–79"), FROM_60("60–69"), BELOW_60("60 以下") }
-enum class Orientation(val label: String) { ALL("全部"), LANDSCAPE("横屏"), PORTRAIT("竖屏") }
+enum class PhotoKind(val label: String, @StringRes val labelRes: Int) { ALL("全部", R.string.filter_all), PERSON("人物", R.string.filter_people), SCENERY("风景", R.string.filter_scenery), ARCHITECTURE("建筑", R.string.filter_architecture), ART("人文艺术", R.string.filter_art), OTHER("其他", R.string.filter_other) }
+enum class WallpaperTarget(@StringRes val labelRes: Int) { DESKTOP(R.string.target_desktop), APP(R.string.target_phone) }
+enum class ScoreBand(@StringRes val labelRes: Int) { ALL(R.string.filter_all), ABOVE_80(R.string.score_80_plus), FROM_70(R.string.score_70), FROM_60(R.string.score_60), BELOW_60(R.string.score_below_60) }
+enum class Orientation(@StringRes val labelRes: Int) { ALL(R.string.filter_all), LANDSCAPE(R.string.orientation_landscape), PORTRAIT(R.string.orientation_portrait) }
 
 data class PhotoCandidate(
     val uri: Uri,
@@ -45,7 +47,19 @@ data class ScanProgress(
     val fraction: Float get() = if (total == 0) 0f else done.toFloat() / total
 }
 
-/** The actual normalized component and its measurement at analysis time. */
-data class ScoreDetail(val name: String, val weight: Double, val value: Float, val policy: String, val reason: String) {
+data class ScoreCopy(val name: String, val policy: String, val reason: String)
+
+/** Cache both explanations with the measurement so switching languages never changes the score. */
+data class ScoreDetail(
+    val name: String,
+    val weight: Double,
+    val value: Float,
+    val policy: String,
+    val reason: String,
+    val english: ScoreCopy? = null,
+) {
     val points: Double get() = weight * value
+
+    fun displayText(chinese: Boolean): ScoreCopy =
+        if (chinese) ScoreCopy(name, policy, reason) else english ?: ScoreCopy(name, policy, reason)
 }

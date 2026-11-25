@@ -13,15 +13,26 @@ object WallpaperAssessment {
         val sum = ratings.sum()
         require(abs(sum - 1f) < .001f) { "审美模型概率分布无效" }
         val mean = (ratings.indices.sumOf { (it + 1) * ratings[it].toDouble() } / ratings.sumOf { it.toDouble() }).coerceIn(1.0, 10.0)
+        val englishModelName = modelName.substringBefore('（')
         if (calibration != null) {
             val value = calibration.normalize(mean)
             return ScoreDetail("画面美感", 70.0, value,
                 String.format(Locale.ROOT, "本地 %s 预测审美均值，经样例校准：参考分=%.6f×均值%+.6f，限定在 0–100 后乘以 70%%。系数由 46 张高分辨率照片的本次大模型视觉参考评分拟合，另留 11 张验证。仅校准分数尺度，不改变模型排序，也不是个人喜好的标准答案。", modelName, calibration.slope, calibration.intercept),
-                String.format(Locale.ROOT, "模型原始均值 %.2f/10，校准后的美感参考分 %.1f/100。手机仅执行本地推理与换算；参考评分有主观性，模型不理解你的个人回忆。", mean, value * 100))
+                String.format(Locale.ROOT, "模型原始均值 %.2f/10，校准后的美感参考分 %.1f/100。手机仅执行本地推理与换算；参考评分有主观性，模型不理解你的个人回忆。", mean, value * 100),
+                ScoreCopy(
+                    "Aesthetics",
+                    String.format(Locale.ROOT, "%s predicts an aesthetic mean. The reference score is %.6f × mean %+.6f, clamped to 0–100 and weighted at 70%%. The calibration was fitted on 46 high-resolution photos, with 11 held out for validation. It changes the scale and preserves the model ranking.", englishModelName, calibration.slope, calibration.intercept),
+                    String.format(Locale.ROOT, "Model mean: %.2f/10. Calibrated reference score: %.1f/100. The app runs inference and calibration on your device. The visual ratings reflect subjective judgments.", mean, value * 100),
+                ))
         }
         return ScoreDetail("画面美感", 70.0, ((mean - 1.0) / 9.0).toFloat().coerceIn(0f, 1f),
             "本地 $modelName 预测 1–10 分审美分布，均值按 (均值−1)÷9 映射为百分制；用于相对排序，不是及格率。",
-            String.format(Locale.ROOT, "模型预测审美均值 %.2f/10。依据整张照片的学习特征评价整体观感；模型不能生成可信的逐项色彩、光影解释，也不理解你的个人回忆。", mean))
+            String.format(Locale.ROOT, "模型预测审美均值 %.2f/10。依据整张照片的学习特征评价整体观感；模型不能生成可信的逐项色彩、光影解释，也不理解你的个人回忆。", mean),
+            ScoreCopy(
+                "Aesthetics",
+                "$englishModelName predicts a distribution of ratings from 1 to 10. The mean is converted to a 100-point scale for ranking.",
+                String.format(Locale.ROOT, "Predicted mean: %.2f/10. The model estimates the overall look of the photo from learned visual features.", mean),
+            ))
     }
 
     fun subject(semantics: PhotoScorer.SemanticStats): ScoreDetail =
@@ -31,8 +42,12 @@ object WallpaperAssessment {
         require(width > 0 && height > 0 && labels.size == width * height)
         val area = labels.count { it >= 0 }
         val policy = "用全图语义区域的集中连贯性近似主体明确度：最大三个连通区域占有效区域的比例。忽略小于全图 0.1% 的分割碎片；不按主体位置或题材类别加分，分类为其他也照常测量。此项不理解故事或元素的语义关系。"
+        val englishPolicy = "Estimates subject clarity using the share of valid pixels in the three largest connected regions. Fragments smaller than 0.1% of the image are excluded. Subject placement and category do not affect the score."
+        fun subjectDetail(value: Float, reason: String, englishReason: String) =
+            ScoreDetail("主体明确度", 20.0, value, policy, reason, ScoreCopy("Subject clarity", englishPolicy, englishReason))
         if (area < maxOf(4, labels.size / 100)) {
-            return ScoreDetail("主体明确度", 20.0, .5f, policy, "未检测到足够画面区域，暂按中性 50% 计分，不据此判断主题不明确。")
+            return subjectDetail(.5f, "未检测到足够画面区域，暂按中性 50% 计分，不据此判断主题不明确。",
+                "Too few regions were detected to assess subject clarity. A neutral score of 50% was used.")
         }
         val seen = BooleanArray(labels.size)
         val queue = IntArray(labels.size)
@@ -53,10 +68,12 @@ object WallpaperAssessment {
             }
             if (tail >= maxOf(2, labels.size / 1000)) regions += tail
         }
-        if (regions.isEmpty()) return ScoreDetail("主体明确度", 20.0, .5f, policy, "画面分割只有细小碎片，证据不足，暂按中性 50% 计分。")
+        if (regions.isEmpty()) return subjectDetail(.5f, "画面分割只有细小碎片，证据不足，暂按中性 50% 计分。",
+            "Only small fragments were detected. A neutral score of 50% was used.")
         val fraction = regions.sortedDescending().take(3).sum().toFloat() / regions.sum()
-        return ScoreDetail("主体明确度", 20.0, fraction, policy,
-            String.format(Locale.ROOT, "检测到 %d 个有效画面区域，最大三个占 %.1f%%。仅反映画面区域是否集中连贯，不等同于人工判断主题。", regions.size, fraction * 100))
+        return subjectDetail(fraction,
+            String.format(Locale.ROOT, "检测到 %d 个有效画面区域，最大三个占 %.1f%%。仅反映画面区域是否集中连贯，不等同于人工判断主题。", regions.size, fraction * 100),
+            String.format(Locale.ROOT, "Detected %d valid regions. The three largest cover %.1f%% of the valid area.", regions.size, fraction * 100))
     }
 
     fun combine(aesthetic: ScoreDetail, subject: ScoreDetail, clarity: ScoreDetail): PhotoScorer.Result {
